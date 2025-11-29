@@ -29,19 +29,53 @@ public class MedicalContextBuilder {
     private final ObjectMapper objectMapper;
 
     /**
-     * 将 UserProfile 中的病史 + 体检指标转成 prompt 片段。
+     * 【新方法】核心逻辑：仅根据 JSON 数据和性别生成医疗建议提示词
+     * 这个方法将被 FileParserUtil 和 UserProfileService 调用并存库
+     */
+    public String generateMedicalAdvicePrompt(String extractedMedicalData, Integer gender) {
+        if (StringUtils.isBlank(extractedMedicalData)) {
+            return "";
+        }
+
+        // 1. 解析 JSON
+        Map<String, String> medicalData = parseMedicalData(extractedMedicalData);
+
+        // 2. 生成建议
+        String advice = buildMedicalAdvice(medicalData, gender);
+
+        if (StringUtils.isBlank(advice)) {
+            return "";
+        }
+
+        // 3. 格式化返回
+        return "- Medical risk & advice: " + advice;
+    }
+
+
+    /**
+     * 推荐服务调用此方法构建完整 Context
+     * 现在它优先读取数据库中缓存的字段
      */
     public String build(UserProfile profile) {
         StringBuilder sb = new StringBuilder();
         sb.append(System.lineSeparator()).append("【病史与体检】").append(System.lineSeparator());
         sb.append("- 病史: ").append(StringUtils.defaultIfBlank(profile.getMedicalHistory(), "无")).append(System.lineSeparator());
+
+        // 简单展示提取的原始指标
         sb.append("- 体检指标: ").append(extractMedicalIndicators(profile.getExtractedMedicalData())).append(System.lineSeparator());
 
-        Map<String, String> medicalData = parseMedicalData(profile.getExtractedMedicalData());
-        String medicalAdvice = buildMedicalAdvice(medicalData, profile.getGender());
-        if (StringUtils.isNotBlank(medicalAdvice)) {
-            sb.append("- Medical risk & advice: ").append(medicalAdvice).append(System.lineSeparator());
+        // 直接使用数据库中存储的预计算 Prompt
+        // 如果数据库里有，直接用；如果没有（旧数据），才实时计算兜底
+        if (StringUtils.isNotBlank(profile.getMedicalAdvicePrompt())) {
+            sb.append(profile.getMedicalAdvicePrompt()).append(System.lineSeparator());
+        } else {
+            // 兜底：实时计算
+            String realtimeAdvice = generateMedicalAdvicePrompt(profile.getExtractedMedicalData(), profile.getGender());
+            if (StringUtils.isNotBlank(realtimeAdvice)) {
+                sb.append(realtimeAdvice).append(System.lineSeparator());
+            }
         }
+
         return sb.toString();
     }
 

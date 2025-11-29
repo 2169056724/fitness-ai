@@ -117,4 +117,9 @@ public class UserProfile {
      */
     private LocalDateTime updatedAt;
 
+    /**
+     * 预计算的医疗建议提示词
+     */
+    private String medicalAdvicePrompt;
+
 }

@@ -20,6 +20,7 @@
         <result column="activity_level" property="activityLevel"/>
         <result column="medical_report_path" property="medicalReportPath"/>
         <result column="extracted_medical_data" property="extractedMedicalData"/>
+        <result column="medical_advice_prompt" property="medicalAdvicePrompt"/>
         <result column="breakfast_time" property="breakfastTime"/>
         <result column="lunch_time" property="lunchTime"/>
         <result column="dinner_time" property="dinnerTime"/>
@@ -33,7 +34,7 @@
     height_cm, weight_kg, goal, target_weight_kg,
     training_location, available_time_per_day, fitness_level, training_frequency, special_restrictions,
     medical_history, activity_level,
-    medical_report_path, extracted_medical_data,
+    medical_report_path, extracted_medical_data,medical_advice_prompt,
     breakfast_time, lunch_time, dinner_time, snack_time, updated_at
     </sql>
     <insert id="addProfile">
@@ -59,6 +60,7 @@
             <if test="lunchTime != null">lunch_time,</if>
             <if test="dinnerTime != null">dinner_time,</if>
             <if test="snackTime != null">snack_time,</if>
+            <if test="medicalAdvicePrompt != null">medical_advice_prompt</if>
             <if test="updatedAt != null">updated_at,</if>
         </trim>
         <trim prefix="VALUES (" suffix=")" suffixOverrides=",">
@@ -78,6 +80,7 @@
             <if test="activityLevel != null">#{activityLevel},</if>
             <if test="medicalReportPath != null">#{medicalReportPath},</if>
             <if test="extractedMedicalData != null">#{extractedMedicalData},</if>
+            <if test="medicalAdvicePrompt != null">medical_advice_prompt</if>
             <if test="breakfastTime != null">#{breakfastTime},</if>
             <if test="lunchTime != null">#{lunchTime},</if>
             <if test="dinnerTime != null">#{dinnerTime},</if>
@@ -104,6 +107,7 @@
             <if test="activityLevel != null">activity_level = #{activityLevel},</if>
             <if test="medicalReportPath != null">medical_report_path = #{medicalReportPath},</if>
             <if test="extractedMedicalData != null">extracted_medical_data = #{extractedMedicalData},</if>
+            <if test="medicalAdvicePrompt != null">medical_advice_prompt</if>
             <if test="breakfastTime != null">breakfast_time = #{breakfastTime},</if>
             <if test="lunchTime != null">lunch_time = #{lunchTime},</if>
             <if test="dinnerTime != null">dinner_time = #{dinnerTime},</if>
@@ -118,13 +122,13 @@
             user_id, age, gender, height_cm, weight_kg, goal, target_weight_kg,
             training_location, available_time_per_day, fitness_level, training_frequency,
             special_restrictions, medical_history, activity_level,
-            medical_report_path, extracted_medical_data,
+            medical_report_path, extracted_medical_data,medical_advice_prompt,
             breakfast_time, lunch_time, dinner_time, snack_time, updated_at
         ) VALUES (
             #{userId}, #{age}, #{gender}, #{heightCm}, #{weightKg}, #{goal}, #{targetWeightKg},
             #{trainingLocation}, #{availableTimePerDay}, #{fitnessLevel}, #{trainingFrequency},
             #{specialRestrictions}, #{medicalHistory}, #{activityLevel},
-            #{medicalReportPath}, #{extractedMedicalData},
+            #{medicalReportPath}, #{extractedMedicalData},#{medicalAdvicePrompt}
             #{breakfastTime}, #{lunchTime}, #{dinnerTime}, #{snackTime}, #{updatedAt}
         )
         ON DUPLICATE KEY UPDATE
@@ -143,6 +147,7 @@
             activity_level = COALESCE(VALUES(activity_level), activity_level),
             medical_report_path = COALESCE(VALUES(medical_report_path), medical_report_path),
             extracted_medical_data = COALESCE(VALUES(extracted_medical_data), extracted_medical_data),
+            medical_advice_prompt = COALESCE(VALUES(medical_advice_prompt), medical_advice_prompt),
             breakfast_time = COALESCE(VALUES(breakfast_time), breakfast_time),
             lunch_time = COALESCE(VALUES(lunch_time), lunch_time),
             dinner_time = COALESCE(VALUES(dinner_time), dinner_time),
@@ -175,7 +180,7 @@
         up.height_cm, up.weight_kg, up.goal, up.target_weight_kg,
         up.training_location, up.available_time_per_day, up.fitness_level, up.training_frequency, up.special_restrictions,
         up.medical_history, up.activity_level,
-        up.medical_report_path, up.extracted_medical_data,
+        up.medical_report_path, up.extracted_medical_data,up.medical_advice_prompt,
         up.breakfast_time, up.lunch_time, up.dinner_time, up.snack_time, up.updated_at
         FROM user_profile up
         INNER JOIN user u ON up.user_id = u.id

@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSONObject;
 import com.lyz.config.MinioConfig;
 import com.lyz.mapper.UserProfileMapper;
 import com.lyz.model.entity.UserProfile;
+import com.lyz.service.builder.MedicalContextBuilder;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class FileParserUtil {
     private final MinioClient minioClient;
     private final MinioConfig minioConfig;
     private final UserProfileMapper profileMapper;
+    private final MedicalContextBuilder medicalContextBuilder;
 
     // 仅提取训练/饮食决策需要的核心健康指标
     private static final Pattern BLOOD_PRESSURE_PATTERN = Pattern.compile(
@@ -111,14 +113,34 @@ public class FileParserUtil {
             log.info("文本提取完成: objectKey={}, length={}, preview={}", objectKey, text.length(), previewText);
 
             JSONObject medicalData = extractKeywords(text);
+            String medicalJson = medicalData.toJSONString();
 
-            UserProfile profile = new UserProfile();
-            profile.setUserId(userId);
-            profile.setExtractedMedicalData(medicalData.toJSONString());
-            profile.setMedicalReportPath(objectKey);
-            profile.setUpdatedAt(LocalDateTime.now());
-            profileMapper.upsertProfile(profile);
-            log.info("Medical indicators upserted from report: userId={}, data={}", userId, medicalData.toJSONString());
+            // ================= 【核心修改开始】 =================
+            // 1. 准备更新对象
+            UserProfile profileUpdate = new UserProfile();
+            profileUpdate.setUserId(userId);
+            profileUpdate.setExtractedMedicalData(medicalJson);
+            profileUpdate.setMedicalReportPath(objectKey);
+            profileUpdate.setUpdatedAt(LocalDateTime.now());
+
+            // 2. 为了生成准确建议，需要知道用户性别
+            Integer gender = 0; // 默认为未知
+            try {
+                UserProfile existingProfile = profileMapper.getByUserId(userId);
+                if (existingProfile != null && existingProfile.getGender() != null) {
+                    gender = existingProfile.getGender();
+                }
+            } catch (Exception e) {
+                log.warn("解析文件时获取用户性别失败，将使用默认阈值: userId={}", userId);
+            }
+
+            // 3. 调用 Builder 生成提示词字符串
+            String advicePrompt = medicalContextBuilder.generateMedicalAdvicePrompt(medicalJson, gender);
+            profileUpdate.setMedicalAdvicePrompt(advicePrompt); // 设置缓存字段
+
+            // 4. 落库
+            profileMapper.upsertProfile(profileUpdate);
+            log.info("体检报告解析并生成建议完成: userId={}, adviceLength={}", userId, advicePrompt.length());
         } catch (Exception e) {
             log.error("文件解析失败: objectKey={}, userId={}", objectKey, userId, e);
         } finally {
