@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lyz.mapper.UserMapper">
+
+
+
+    <!-- 插入用户 -->
+    <insert id="insert" parameterType="com.lyz.model.entity.User" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user (
+            openid, last_login_at, created_at, updated_at
+        ) VALUES (
+            #{openid},NOW(), NOW(), NOW()
+        )
+    </insert>
+
+    <!-- 更新用户信息 -->
+    <update id="updateById" parameterType="com.lyz.model.entity.User">
+        UPDATE user
+        <set>
+            <if test="nickname != null">nickname = #{nickname},</if>
+            <if test="avatar != null">avatar = #{avatar},</if>
+            updated_at = NOW()
+        </set>
+        WHERE id = #{id} AND is_deleted = 0
+    </update>
+
+    <!-- 更新最后登录时间 -->
+    <update id="updateLastLoginTime">
+        UPDATE user
+        SET last_login_at = NOW(), updated_at = NOW()
+        WHERE id = #{id} AND is_deleted = 0
+    </update>
+    <select id="selectByOpenid" resultType="com.lyz.model.entity.User">
+        SELECT * FROM user WHERE openid = #{openid} AND is_deleted = 0
+    </select>
+    <select id="selectById" resultType="com.lyz.model.entity.User">
+        SELECT * FROM user WHERE id = #{id} AND is_deleted = 0
+    </select>
+
+</mapper>
+

@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lyz.mapper.UserProfileMapper">
+
+    <resultMap id="BaseResultMap" type="com.lyz.model.entity.UserProfile">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="age" property="age"/>
+        <result column="gender" property="gender"/>
+        <result column="height_cm" property="heightCm"/>
+        <result column="weight_kg" property="weightKg"/>
+        <result column="goal" property="goal"/>
+        <result column="target_weight_kg" property="targetWeightKg"/>
+        <result column="training_location" property="trainingLocation"/>
+        <result column="available_time_per_day" property="availableTimePerDay"/>
+        <result column="fitness_level" property="fitnessLevel"/>
+        <result column="training_frequency" property="trainingFrequency"/>
+        <result column="special_restrictions" property="specialRestrictions"/>
+        <result column="medical_history" property="medicalHistory"/>
+        <result column="activity_level" property="activityLevel"/>
+        <result column="medical_report_path" property="medicalReportPath"/>
+        <result column="extracted_medical_data" property="extractedMedicalData"/>
+        <result column="breakfast_time" property="breakfastTime"/>
+        <result column="lunch_time" property="lunchTime"/>
+        <result column="dinner_time" property="dinnerTime"/>
+        <result column="snack_time" property="snackTime"/>
+        <result column="updated_at" property="updatedAt"/>
+
+    </resultMap>
+
+    <sql id="Base_Column_List">
+    id, user_id, age, gender,
+    height_cm, weight_kg, goal, target_weight_kg,
+    training_location, available_time_per_day, fitness_level, training_frequency, special_restrictions,
+    medical_history, activity_level,
+    medical_report_path, extracted_medical_data,
+    breakfast_time, lunch_time, dinner_time, snack_time, updated_at
+    </sql>
+    <insert id="addProfile">
+        INSERT INTO user_profile
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="userId != null">user_id,</if>
+            <if test="age != null">age,</if>
+            <if test="gender != null">gender,</if>
+            <if test="heightCm != null">height_cm,</if>
+            <if test="weightKg != null">weight_kg,</if>
+            <if test="goal != null">goal,</if>
+            <if test="targetWeightKg != null">target_weight_kg,</if>
+            <if test="trainingLocation != null">training_location,</if>
+            <if test="availableTimePerDay != null">available_time_per_day,</if>
+            <if test="fitnessLevel != null">fitness_level,</if>
+            <if test="trainingFrequency != null">training_frequency,</if>
+            <if test="specialRestrictions != null">special_restrictions,</if>
+            <if test="medicalHistory != null">medical_history,</if>
+            <if test="activityLevel != null">activity_level,</if>
+            <if test="medicalReportPath != null">medical_report_path,</if>
+            <if test="extractedMedicalData != null">extracted_medical_data,</if>
+            <if test="breakfastTime != null">breakfast_time,</if>
+            <if test="lunchTime != null">lunch_time,</if>
+            <if test="dinnerTime != null">dinner_time,</if>
+            <if test="snackTime != null">snack_time,</if>
+            <if test="updatedAt != null">updated_at,</if>
+        </trim>
+        <trim prefix="VALUES (" suffix=")" suffixOverrides=",">
+            <if test="userId != null">#{userId},</if>
+            <if test="age != null">#{age},</if>
+            <if test="gender != null">#{gender},</if>
+            <if test="heightCm != null">#{heightCm},</if>
+            <if test="weightKg != null">#{weightKg},</if>
+            <if test="goal != null">#{goal},</if>
+            <if test="targetWeightKg != null">#{targetWeightKg},</if>
+            <if test="trainingLocation != null">#{trainingLocation},</if>
+            <if test="availableTimePerDay != null">#{availableTimePerDay},</if>
+            <if test="fitnessLevel != null">#{fitnessLevel},</if>
+            <if test="trainingFrequency != null">#{trainingFrequency},</if>
+            <if test="specialRestrictions != null">#{specialRestrictions},</if>
+            <if test="medicalHistory != null">#{medicalHistory},</if>
+            <if test="activityLevel != null">#{activityLevel},</if>
+            <if test="medicalReportPath != null">#{medicalReportPath},</if>
+            <if test="extractedMedicalData != null">#{extractedMedicalData},</if>
+            <if test="breakfastTime != null">#{breakfastTime},</if>
+            <if test="lunchTime != null">#{lunchTime},</if>
+            <if test="dinnerTime != null">#{dinnerTime},</if>
+            <if test="snackTime != null">#{snackTime},</if>
+            <if test="updatedAt != null">#{updatedAt},</if>
+        </trim>
+    </insert>
+
+    <update id="updateProfile">
+        UPDATE user_profile
+        <set>
+            <if test="age != null">age = #{age},</if>
+            <if test="gender != null">gender = #{gender},</if>
+            <if test="heightCm != null">height_cm = #{heightCm},</if>
+            <if test="weightKg != null">weight_kg = #{weightKg},</if>
+            <if test="goal != null">goal = #{goal},</if>
+            <if test="targetWeightKg != null">target_weight_kg = #{targetWeightKg},</if>
+            <if test="trainingLocation != null">training_location = #{trainingLocation},</if>
+            <if test="availableTimePerDay != null">available_time_per_day = #{availableTimePerDay},</if>
+            <if test="fitnessLevel != null">fitness_level = #{fitnessLevel},</if>
+            <if test="trainingFrequency != null">training_frequency = #{trainingFrequency},</if>
+            <if test="specialRestrictions != null">special_restrictions = #{specialRestrictions},</if>
+            <if test="medicalHistory != null">medical_history = #{medicalHistory},</if>
+            <if test="activityLevel != null">activity_level = #{activityLevel},</if>
+            <if test="medicalReportPath != null">medical_report_path = #{medicalReportPath},</if>
+            <if test="extractedMedicalData != null">extracted_medical_data = #{extractedMedicalData},</if>
+            <if test="breakfastTime != null">breakfast_time = #{breakfastTime},</if>
+            <if test="lunchTime != null">lunch_time = #{lunchTime},</if>
+            <if test="dinnerTime != null">dinner_time = #{dinnerTime},</if>
+            <if test="snackTime != null">snack_time = #{snackTime},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
+        </set>
+        WHERE user_id = #{userId}
+    </update>
+
+    <insert id="upsertProfile">
+        INSERT INTO user_profile (
+            user_id, age, gender, height_cm, weight_kg, goal, target_weight_kg,
+            training_location, available_time_per_day, fitness_level, training_frequency,
+            special_restrictions, medical_history, activity_level,
+            medical_report_path, extracted_medical_data,
+            breakfast_time, lunch_time, dinner_time, snack_time, updated_at
+        ) VALUES (
+            #{userId}, #{age}, #{gender}, #{heightCm}, #{weightKg}, #{goal}, #{targetWeightKg},
+            #{trainingLocation}, #{availableTimePerDay}, #{fitnessLevel}, #{trainingFrequency},
+            #{specialRestrictions}, #{medicalHistory}, #{activityLevel},
+            #{medicalReportPath}, #{extractedMedicalData},
+            #{breakfastTime}, #{lunchTime}, #{dinnerTime}, #{snackTime}, #{updatedAt}
+        )
+        ON DUPLICATE KEY UPDATE
+            age = COALESCE(VALUES(age), age),
+            gender = COALESCE(VALUES(gender), gender),
+            height_cm = COALESCE(VALUES(height_cm), height_cm),
+            weight_kg = COALESCE(VALUES(weight_kg), weight_kg),
+            goal = COALESCE(VALUES(goal), goal),
+            target_weight_kg = COALESCE(VALUES(target_weight_kg), target_weight_kg),
+            training_location = COALESCE(VALUES(training_location), training_location),
+            available_time_per_day = COALESCE(VALUES(available_time_per_day), available_time_per_day),
+            fitness_level = COALESCE(VALUES(fitness_level), fitness_level),
+            training_frequency = COALESCE(VALUES(training_frequency), training_frequency),
+            special_restrictions = COALESCE(VALUES(special_restrictions), special_restrictions),
+            medical_history = COALESCE(VALUES(medical_history), medical_history),
+            activity_level = COALESCE(VALUES(activity_level), activity_level),
+            medical_report_path = COALESCE(VALUES(medical_report_path), medical_report_path),
+            extracted_medical_data = COALESCE(VALUES(extracted_medical_data), extracted_medical_data),
+            breakfast_time = COALESCE(VALUES(breakfast_time), breakfast_time),
+            lunch_time = COALESCE(VALUES(lunch_time), lunch_time),
+            dinner_time = COALESCE(VALUES(dinner_time), dinner_time),
+            snack_time = COALESCE(VALUES(snack_time), snack_time),
+            updated_at = VALUES(updated_at)
+    </insert>
+
+
+    <!-- 根据userId查询健康档案 -->
+    <select id="getByUserId" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM user_profile
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <!-- 查询所有健康档案（用于定时任务批量生成计划） -->
+    <select id="selectAllProfiles" resultMap="BaseResultMap">
+        SELECT
+        <include refid="Base_Column_List"/>
+        FROM user_profile
+        ORDER BY updated_at DESC
+    </select>
+
+    <!-- 查询活跃用户的健康档案（N天内有登录记录） -->
+    <select id="selectActiveProfiles" resultMap="BaseResultMap">
+        SELECT
+        up.id, up.user_id, up.age, up.gender,
+        up.height_cm, up.weight_kg, up.goal, up.target_weight_kg,
+        up.training_location, up.available_time_per_day, up.fitness_level, up.training_frequency, up.special_restrictions,
+        up.medical_history, up.activity_level,
+        up.medical_report_path, up.extracted_medical_data,
+        up.breakfast_time, up.lunch_time, up.dinner_time, up.snack_time, up.updated_at
+        FROM user_profile up
+        INNER JOIN user u ON up.user_id = u.id
+        WHERE u.last_login_at >= DATE_SUB(NOW(), INTERVAL #{days} DAY)
+        AND u.is_deleted = 0
+        ORDER BY u.last_login_at DESC
+    </select>
+
+
+</mapper>
+

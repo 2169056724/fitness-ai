@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lyz.mapper.UserNutritionRecordMapper">
+
+    <resultMap id="BaseResultMap" type="com.lyz.model.entity.UserNutritionRecord">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="plan_id" property="planId"/>
+        <result column="record_date" property="recordDate"/>
+        <result column="total_calories" property="totalCalories"/>
+        <result column="target_calories" property="targetCalories"/>
+        <result column="protein" property="protein"/>
+        <result column="carbohydrate" property="carbohydrate"/>
+        <result column="fat" property="fat"/>
+        <result column="breakfast_calories" property="breakfastCalories"/>
+        <result column="lunch_calories" property="lunchCalories"/>
+        <result column="dinner_calories" property="dinnerCalories"/>
+        <result column="snack_calories" property="snackCalories"/>
+        <result column="exercise_duration" property="exerciseDuration"/>
+        <result column="estimated_burn" property="estimatedBurn"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 插入或更新营养记录 -->
+    <insert id="insertOrUpdate" parameterType="com.lyz.model.entity.UserNutritionRecord">
+        INSERT INTO user_nutrition_record (
+            user_id, plan_id, record_date, total_calories, target_calories,
+            protein, carbohydrate, fat,
+            breakfast_calories, lunch_calories, dinner_calories, snack_calories,
+            exercise_duration, estimated_burn, created_at, updated_at
+        ) VALUES (
+            #{userId}, #{planId}, #{recordDate}, #{totalCalories}, #{targetCalories},
+            #{protein}, #{carbohydrate}, #{fat},
+            #{breakfastCalories}, #{lunchCalories}, #{dinnerCalories}, #{snackCalories},
+            #{exerciseDuration}, #{estimatedBurn}, #{createdAt}, #{updatedAt}
+        )
+        ON DUPLICATE KEY UPDATE
+            plan_id = VALUES(plan_id),
+            total_calories = VALUES(total_calories),
+            target_calories = VALUES(target_calories),
+            protein = VALUES(protein),
+            carbohydrate = VALUES(carbohydrate),
+            fat = VALUES(fat),
+            breakfast_calories = VALUES(breakfast_calories),
+            lunch_calories = VALUES(lunch_calories),
+            dinner_calories = VALUES(dinner_calories),
+            snack_calories = VALUES(snack_calories),
+            exercise_duration = VALUES(exercise_duration),
+            estimated_burn = VALUES(estimated_burn),
+            updated_at = VALUES(updated_at)
+    </insert>
+
+    <!-- 根据用户ID和日期范围查询 -->
+    <select id="selectByUserIdAndDateRange" resultMap="BaseResultMap">
+        SELECT
+            id, user_id, plan_id, record_date, total_calories, target_calories,
+            protein, carbohydrate, fat,
+            breakfast_calories, lunch_calories, dinner_calories, snack_calories,
+            exercise_duration, estimated_burn, created_at, updated_at
+        FROM user_nutrition_record
+        WHERE user_id = #{userId}
+          AND record_date &gt;= #{startDate}
+          AND record_date &lt;= #{endDate}
+        ORDER BY record_date ASC
+    </select>
+
+    <!-- 根据用户ID和日期查询单条 -->
+    <select id="selectByUserIdAndDate" resultMap="BaseResultMap">
+        SELECT
+            id, user_id, plan_id, record_date, total_calories, target_calories,
+            protein, carbohydrate, fat,
+            breakfast_calories, lunch_calories, dinner_calories, snack_calories,
+            exercise_duration, estimated_burn, created_at, updated_at
+        FROM user_nutrition_record
+        WHERE user_id = #{userId}
+          AND record_date = #{recordDate}
+        LIMIT 1
+    </select>
+
+</mapper>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lyz.mapper.UserRecommendationMapper">
+
+    <insert id="insert" parameterType="com.lyz.model.entity.UserRecommendation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_plan
+        (user_id, plan_json, date, created_at)
+        VALUES
+        (#{userId}, #{planJson}, #{date}, #{createdAt})
+    </insert>
+
+    <select id="selectByUserIdAndDateRange" resultType="com.lyz.model.entity.UserRecommendation">
+                SELECT id, user_id AS userId, plan_json AS planJson, date, created_at AS createdAt
+                FROM user_plan
+        WHERE user_id = #{userId}
+          AND date >= #{startDate}
+          AND date &lt;= #{endDate}
+        ORDER BY date DESC
+    </select>
+
+    <select id="selectLatestByUserId" resultType="com.lyz.model.entity.UserRecommendation">
+        SELECT id, user_id AS userId, plan_json AS planJson, date, created_at AS createdAt
+        FROM user_plan
+        WHERE user_id = #{userId}
+        ORDER BY date DESC, created_at DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insertOrUpdate" parameterType="com.lyz.model.entity.UserRecommendation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_plan
+        (user_id, plan_json, date, created_at)
+        VALUES
+        (#{userId}, #{planJson}, #{date}, #{createdAt})
+        ON DUPLICATE KEY UPDATE
+        plan_json = VALUES(plan_json),
+        created_at = VALUES(created_at)
+    </insert>
+
+    <select id="getByUserIdAndDate" resultType="com.lyz.model.entity.UserRecommendation">
+        SELECT id, user_id AS userId, plan_json AS planJson, date, created_at AS createdAt
+        FROM user_plan
+        WHERE user_id = #{userId}
+          AND date = #{date}
+        LIMIT 1
+    </select>
+
+</mapper>
