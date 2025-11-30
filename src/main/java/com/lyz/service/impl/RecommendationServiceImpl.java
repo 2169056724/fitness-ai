@@ -57,7 +57,7 @@ public class RecommendationServiceImpl implements RecommendationService {
     private final UserRecommendationMapper userRecommendationMapper;
     private final UserFeedbackMapper userFeedbackMapper;
 
-    // AI 核心组件 (本次重构引入)
+    // AI 核心组件
     private final ZhipuAiClient zhipuAiClient;
     private final FatigueAnalyzer fatigueAnalyzer;          // Step 1: 状态分析
     private final MedicalContextBuilder medicalContextBuilder; // Step 2: 规则引擎
@@ -69,7 +69,6 @@ public class RecommendationServiceImpl implements RecommendationService {
     @Override
     public List<RecommendationPlanVO> generateDailyPlan(Long userId, RecommendationRequestDTO request) {
         // 1. 数据准备 (Data Preparation)
-        User user = userMapper.selectById(userId);
         UserProfile profile = userProfileMapper.getByUserId(userId);
         if (profile == null) throw new IllegalStateException("请先完善健康档案");
 
