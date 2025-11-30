@@ -44,6 +44,15 @@ public class FatigueAnalyzer {
         analyzeTrends(recentFeedbacks, status);
         analyzeEmotionAndBodyParts(recentFeedbacks, status);
 
+        // 提取最近一条有内容的备注
+        for (int i = recentFeedbacks.size() - 1; i >= 0; i--) {
+            String note = recentFeedbacks.get(i).getNotes();
+            if (StringUtils.isNotBlank(note)) {
+                status.setLatestNote(note);
+                break;
+            }
+        }
+
         return status;
     }
 
@@ -83,13 +92,14 @@ public class FatigueAnalyzer {
         for (UserFeedback fb : latestFeedbacks) {
             List<String> tags = parseEmotionTags(fb.getEmotionTags());
             for (String tag : tags) {
-                // 关键词匹配疲劳部位（简单规则，可扩展）
-                if (tag.contains("腿") || tag.contains("下肢") || tag.contains("蹲")) detectedParts.add("下肢");
-                if (tag.contains("胸") || tag.contains("推")) detectedParts.add("胸部");
-                if (tag.contains("背") || tag.contains("拉")) detectedParts.add("背部");
-                if (tag.contains("肩")) detectedParts.add("肩部");
+                // 扩充关键词，防止漏网之鱼
+                if (tag.contains("腿") || tag.contains("下肢") || tag.contains("蹲") || tag.contains("臀")) detectedParts.add("下肢"); // 加个臀
+                if (tag.contains("胸") || tag.contains("推") || tag.contains("卧推")) detectedParts.add("胸部");
+                if (tag.contains("背") || tag.contains("拉") || tag.contains("划船")) detectedParts.add("背部");
+                if (tag.contains("肩") || tag.contains("举")) detectedParts.add("肩部"); // 加个举（推举）
 
-                if (tag.contains("累") || tag.contains("疲劳") || tag.contains("酸") || tag.contains("痛")) {
+                // 扩充疲劳词
+                if (tag.contains("累") || tag.contains("疲") || tag.contains("酸") || tag.contains("痛") || tag.contains("炸") || tag.contains("废")) {
                     fatigueCount++;
                 }
             }

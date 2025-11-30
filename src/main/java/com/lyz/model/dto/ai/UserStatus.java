@@ -39,4 +39,8 @@ public class UserStatus {
      * 是否需要恢复日
      */
     private boolean needRestDay;
+    /**
+     * 用户最近的文字反馈
+     */
+    private String latestNote;
 }

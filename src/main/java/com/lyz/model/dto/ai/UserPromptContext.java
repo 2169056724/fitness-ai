@@ -21,5 +21,6 @@ public class UserPromptContext {
 
     // === 场景控制 ===
     private boolean isFirstTime;     // 是否首次
-    private String targetFocus;      // 今日训练重点 (e.g. "上肢", "全身恢复")
+    private String targetFocus;      // 仅当有强制干预（如受伤/休息）时才有值，否则为 null
+    private String lastTrainingContent; // 昨天练了什么（例如 "胸部力量训练"）
 }

@@ -64,7 +64,7 @@ public class PromptTemplateManager {
         sb.append(String.format("【用户画像】\n%s\n目标：%s\n偏好：%s\n",
                 ctx.getBasicInfo(), ctx.getGoal(), ctx.getPreferences()));
 
-        // 2. 身体状态区 (Step 1 产物)
+        // 2. 身体状态区
         UserStatus status = ctx.getUserStatus();
         sb.append("\n【今日状态 (反馈分析)】\n");
         if (ctx.isFirstTime()) {
@@ -79,6 +79,9 @@ public class PromptTemplateManager {
             if (status.isNeedRestDay()) {
                 sb.append("- ⚠️ 系统判定：今日建议【强制休息】或【极低强度恢复】。\n");
             }
+        }
+        if (StringUtils.isNotBlank(status.getLatestNote())) {
+            sb.append(String.format("- 📝 用户主观日记（请重点参考）：\"%s\"\n", status.getLatestNote()));
         }
 
         // 3. 饮食约束区
@@ -105,17 +108,30 @@ public class PromptTemplateManager {
             sb.append("- 体检指标正常，无特殊医学限制。\n");
         }
 
-        // 4. 任务指令
+        // 3. 训练上下文
+        sb.append("\n【训练上下文】\n");
+        sb.append(String.format("- 📅 昨天训练内容：%s\n", ctx.getLastTrainingContent()));
+
+        // 4. 生成任务指令 (大幅修改)
         sb.append("\n【生成任务】\n");
-        sb.append("请基于以上信息，生成今日计划。\n");
+        sb.append("请基于以上信息生成今日计划。决策逻辑如下：\n");
+
+        // 逻辑 A：如果有系统强制指令（比如用户受伤了），最高优先级执行
         if (StringUtils.isNotBlank(ctx.getTargetFocus())) {
-            sb.append(String.format("要求：今日训练重点为【%s】。\n", ctx.getTargetFocus()));
+            sb.append(String.format("❗ 系统强制要求：今日重点必须为【%s】。\n", ctx.getTargetFocus()));
+        }
+        // 逻辑 B：如果没有强制指令，让 AI 智能决策
+        else {
+            sb.append("1. 请遵循科学的分化训练原则 (Split Routine)。\n");
+            sb.append("2. 根据【昨天训练内容】，避免连续两天训练相同的高强度部位（例如昨天练了胸，今天就不要练推类动作）。\n");
+            sb.append("3. 结合用户偏好，设计最合适的今日重点（如：上肢/下肢分化，或推/拉/蹲分化）。\n");
         }
         if (status.getIntensityAdjustment() < 1.0) {
             sb.append("要求：用户状态不佳，请适当【降低强度】。\n");
         } else if (status.getIntensityAdjustment() > 1.0) {
             sb.append("要求：用户状态良好，可适当【增加挑战】。\n");
         }
+
 
         return sb.toString();
     }

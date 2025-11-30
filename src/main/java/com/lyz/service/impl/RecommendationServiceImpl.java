@@ -83,8 +83,15 @@ public class RecommendationServiceImpl implements RecommendationService {
                     profile.getExtractedMedicalData(), profile.getGender()
             );
 
-            // Step 3: 决策今日训练重点 (简单的推导逻辑)
-            String targetFocus = determineTrainingFocus(userStatus, history);
+            // Step 3: 只返回"强制干预指令"，常规情况返回 null
+            String targetFocus = determineTrainingFocus(userStatus);
+
+            // 提取昨日训练内容
+            String lastTrainingContent = "无（首次训练）";
+            if (!history.isEmpty()) {
+                // history.get(0) 是最近的一条（因为SQL是 order by date desc）
+                lastTrainingContent = parseLastTrainingSummary(history.get(0));
+            }
 
             // Step 4: 组装 Prompt 上下文
             UserPromptContext context = UserPromptContext.builder()
@@ -95,6 +102,7 @@ public class RecommendationServiceImpl implements RecommendationService {
                     .constraints(constraints)
                     .isFirstTime(isFirstTime)
                     .targetFocus(targetFocus)
+                    .lastTrainingContent(lastTrainingContent)
                     .build();
 
             // Step 5: 渲染 Prompt
@@ -119,25 +127,50 @@ public class RecommendationServiceImpl implements RecommendationService {
     // ================= 核心辅助逻辑 =================
 
     /**
-     * 根据疲劳部位和历史，决定今天练什么
+     * 解析昨天的计划，提取关键信息
      */
-    private String determineTrainingFocus(UserStatus status, List<UserRecommendation> history) {
-        // 1. 如果有明显疲劳部位，必须避开
+    private String parseLastTrainingSummary(UserRecommendation rec) {
+        try {
+            // 解析 JSON 数组的第一个方案
+            List<RecommendationPlanVO> plans = objectMapper.readValue(
+                    rec.getPlanJson(),
+                    new TypeReference<List<RecommendationPlanVO>>() {}
+            );
+
+            if (plans != null && !plans.isEmpty()) {
+                RecommendationPlanVO plan = plans.get(0);
+                String title = plan.getTitle();
+                String focus = "未知";
+                if (plan.getTraining_plan() != null) {
+                    focus = plan.getTraining_plan().getFocus_part();
+                }
+                return String.format("%s (重点部位: %s)", title, focus);
+            }
+        } catch (Exception e) {
+            log.warn("解析历史计划失败", e);
+        }
+        return "未知";
+    }
+
+    /**
+     *
+     * 只负责“安全风控”
+     */
+    private String determineTrainingFocus(UserStatus status) {
+        // 1. 优先处理疲劳部位避让 (强制指令)
         if (!status.getFatiguedBodyParts().isEmpty()) {
-            List<String> avoid = status.getFatiguedBodyParts();
-            if (avoid.contains("下肢")) return "上肢力量 或 核心训练";
-            if (avoid.contains("上肢") || avoid.contains("胸部")) return "下肢力量 或 有氧恢复";
-            return "低强度全身恢复";
+            String avoid = String.join("、", status.getFatiguedBodyParts());
+            return "严格避开部位：" + avoid; // 这种指令 AI 必须听
         }
 
-        // 2. 如果建议休息
+        // 2. 强制休息 (强制指令)
         if (status.isNeedRestDay()) {
-            return "主动恢复 (拉伸/瑜伽)";
+            return "主动恢复 (瑜伽/拉伸/冥想)";
         }
 
-        // 3. 简单轮动逻辑 (查看昨天练了什么，这里做个简单模拟，实际可解析历史JSON)
-        // 默认为全身综合
-        return "全身综合训练";
+        // 3. 常规情况：返回 null，表示"无强制要求，请 AI 自由发挥"
+        // 之前的 "return '全身综合训练'" 删掉
+        return null;
     }
 
     private String formatBasicInfo(UserProfile p) {
