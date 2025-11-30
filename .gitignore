@@ -35,5 +35,4 @@ build/
 *.md
 *.txt
 
-*.yml
-pom.xml
+
