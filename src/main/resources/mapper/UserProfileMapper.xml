@@ -128,7 +128,7 @@
             #{userId}, #{age}, #{gender}, #{heightCm}, #{weightKg}, #{goal}, #{targetWeightKg},
             #{trainingLocation}, #{availableTimePerDay}, #{fitnessLevel}, #{trainingFrequency},
             #{specialRestrictions}, #{medicalHistory}, #{activityLevel},
-            #{medicalReportPath}, #{extractedMedicalData},#{medicalAdvicePrompt}
+            #{medicalReportPath}, #{extractedMedicalData},#{medicalAdvicePrompt},
             #{breakfastTime}, #{lunchTime}, #{dinnerTime}, #{snackTime}, #{updatedAt}
         )
         ON DUPLICATE KEY UPDATE

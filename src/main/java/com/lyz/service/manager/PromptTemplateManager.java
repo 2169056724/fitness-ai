@@ -2,11 +2,9 @@ package com.lyz.service.manager;
 
 import com.lyz.model.dto.ai.UserPromptContext;
 import com.lyz.model.dto.ai.UserStatus;
-import com.lyz.model.dto.ai.DietConstraints;
+import com.lyz.model.dto.ai.HealthConstraints;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
-
-import java.util.stream.Collectors;
 
 /**
  * Prompt 模板管理器
@@ -83,18 +81,28 @@ public class PromptTemplateManager {
             }
         }
 
-        // 3. 饮食约束区 (Step 2 产物)
-        DietConstraints diet = ctx.getConstraints();
-        sb.append("\n【饮食红线 (体检分析)】\n");
+        // 3. 饮食约束区
+        HealthConstraints diet = ctx.getConstraints();
+        sb.append("\n【医学风险与禁忌 (体检分析)】\n");
+        // 3.1 饮食禁忌
         if (!diet.getForbiddenCategories().isEmpty()) {
-            sb.append(String.format("- 🚫 绝对禁忌：%s\n",
+            sb.append(String.format("- 🚫 饮食绝对禁忌：%s\n",
                     String.join(", ", diet.getForbiddenCategories())));
         }
-        if (StringUtils.isNotBlank(diet.getRiskWarning())) {
-            sb.append(String.format("- 风险提示：%s\n", diet.getRiskWarning()));
+
+        // 3.2 训练禁忌
+        if (!diet.getTrainingRisks().isEmpty()) {
+            sb.append(String.format("- ⚠️ 训练安全红线（严格遵守）：%s\n",
+                    String.join("; ", diet.getTrainingRisks())));
         }
-        if (diet.getForbiddenCategories().isEmpty() && StringUtils.isBlank(diet.getRiskWarning())) {
-            sb.append("- 无特殊饮食限制，均衡膳食即可。\n");
+
+        // 3.3 综合风险
+        if (StringUtils.isNotBlank(diet.getRiskWarning())) {
+            sb.append(String.format("- 综合风险提示：%s\n", diet.getRiskWarning()));
+        }
+
+        if (diet.getForbiddenCategories().isEmpty() && diet.getTrainingRisks().isEmpty() && StringUtils.isBlank(diet.getRiskWarning())) {
+            sb.append("- 体检指标正常，无特殊医学限制。\n");
         }
 
         // 4. 任务指令

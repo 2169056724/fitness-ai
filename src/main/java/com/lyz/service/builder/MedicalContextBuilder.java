@@ -2,7 +2,7 @@ package com.lyz.service.builder;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lyz.model.dto.ai.DietConstraints;
+import com.lyz.model.dto.ai.HealthConstraints;
 import com.lyz.model.entity.UserProfile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,8 +33,8 @@ public class MedicalContextBuilder {
      * @param gender 性别
      * @return 饮食约束对象
      */
-    public DietConstraints inferConstraints(String extractedMedicalData, Integer gender) {
-        DietConstraints constraints = new DietConstraints();
+    public HealthConstraints inferConstraints(String extractedMedicalData, Integer gender) {
+        HealthConstraints constraints = new HealthConstraints();
         if (StringUtils.isBlank(extractedMedicalData)) {
             return constraints;
         }
@@ -62,7 +62,7 @@ public class MedicalContextBuilder {
      * 现在它内部调用 inferConstraints，保证逻辑不重复
      */
     public String generateMedicalAdvicePrompt(String extractedMedicalData, Integer gender) {
-        DietConstraints constraints = inferConstraints(extractedMedicalData, gender);
+        HealthConstraints constraints = inferConstraints(extractedMedicalData, gender);
 
         // 如果没有风险，返回空
         if (StringUtils.isBlank(constraints.getRiskWarning())) {
@@ -83,29 +83,9 @@ public class MedicalContextBuilder {
         return sb.toString();
     }
 
-    /**
-     * 【旧方法保留】构建完整上下文字符串
-     * 你的 RecommendationServiceImpl 还在用这个，暂时保留，但建议后续逐步移除
-     */
-    public String build(UserProfile profile) {
-        // 这里只是为了不让代码报错，实际上我们后续会用 Template 替代这个方法
-        StringBuilder sb = new StringBuilder();
-        if (StringUtils.isNotBlank(profile.getMedicalHistory())) {
-            sb.append("- 病史: ").append(profile.getMedicalHistory()).append("\n");
-        }
-        // 优先用缓存的 Prompt
-        if (StringUtils.isNotBlank(profile.getMedicalAdvicePrompt())) {
-            sb.append(profile.getMedicalAdvicePrompt());
-        } else {
-            // 实时计算
-            sb.append(generateMedicalAdvicePrompt(profile.getExtractedMedicalData(), profile.getGender()));
-        }
-        return sb.toString();
-    }
 
-    // ================== 规则判断逻辑 (私有) ==================
 
-    private void checkUricAcid(Map<String, String> data, Integer gender, DietConstraints dc) {
+    private void checkUricAcid(Map<String, String> data, Integer gender, HealthConstraints dc) {
         double val = parseNumber(data.get("uric_acid"));
         if (val <= 0) return;
         // 阈值: 男420, 女360
@@ -115,11 +95,12 @@ public class MedicalContextBuilder {
             dc.getForbiddenCategories().add("动物内脏(肝/腰)");
             dc.getForbiddenCategories().add("浓肉汤");
             dc.getStrategyTags().add("低嘌呤饮食");
+            dc.getTrainingRisks().add("尿酸偏高：痛风发作期严禁运动，缓解期避免高强度跳跃等关节冲击动作");
             appendWarning(dc, "尿酸偏高");
         }
     }
 
-    private void checkBloodSugar(Map<String, String> data, DietConstraints dc) {
+    private void checkBloodSugar(Map<String, String> data, HealthConstraints dc) {
         double glucose = parseNumber(data.get("blood_glucose"));
         double hba1c = parseNumber(data.get("hba1c"));
         if (glucose > 6.1 || hba1c > 6.0) {
@@ -128,11 +109,12 @@ public class MedicalContextBuilder {
             dc.getForbiddenCategories().add("精白米面(白粥)");
             dc.getRecommendedElements().add("全谷物/杂豆");
             dc.getStrategyTags().add("低GI饮食");
+            dc.getTrainingRisks().add("血糖偏高：严禁空腹进行高强度运动，运动前后注意监测血糖，随身携带糖果防止低血糖");
             appendWarning(dc, "血糖偏高");
         }
     }
 
-    private void checkLipids(Map<String, String> data, DietConstraints dc) {
+    private void checkLipids(Map<String, String> data, HealthConstraints dc) {
         double tg = parseNumber(data.get("triglyceride"));
         double ldl = parseNumber(data.get("ldl"));
         if (tg > 1.7 || ldl > 3.4) {
@@ -144,7 +126,7 @@ public class MedicalContextBuilder {
         }
     }
 
-    private void checkBloodPressure(Map<String, String> data, DietConstraints dc) {
+    private void checkBloodPressure(Map<String, String> data, HealthConstraints dc) {
         String bpStr = data.get("blood_pressure");
         if (StringUtils.isBlank(bpStr)) return;
         Pattern p = Pattern.compile("(\\d{2,3})");
@@ -155,12 +137,13 @@ public class MedicalContextBuilder {
                 dc.getForbiddenCategories().add("咸菜/腊肉");
                 dc.getForbiddenCategories().add("高钠零食");
                 dc.getStrategyTags().add("DASH饮食(限盐)");
+                dc.getTrainingRisks().add("血压偏高：严禁大重量憋气动作（瓦尔萨尔瓦动作），避免头部低于心脏的体位（如倒立），推荐中低强度有氧");
                 appendWarning(dc, "血压偏高");
             }
         }
     }
 
-    private void appendWarning(DietConstraints dc, String warning) {
+    private void appendWarning(HealthConstraints dc, String warning) {
         String current = StringUtils.defaultString(dc.getRiskWarning());
         if (!current.contains(warning)) {
             dc.setRiskWarning(current + " ⚠️" + warning + ";");

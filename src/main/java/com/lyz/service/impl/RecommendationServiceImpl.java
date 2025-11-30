@@ -8,10 +8,9 @@ import com.lyz.mapper.UserMapper;
 import com.lyz.mapper.UserProfileMapper;
 import com.lyz.mapper.UserRecommendationMapper;
 import com.lyz.model.dto.RecommendationRequestDTO;
-import com.lyz.model.dto.ai.DietConstraints;
+import com.lyz.model.dto.ai.HealthConstraints;
 import com.lyz.model.dto.ai.UserPromptContext;
 import com.lyz.model.dto.ai.UserStatus;
-import com.lyz.model.entity.User;
 import com.lyz.model.entity.UserFeedback;
 import com.lyz.model.entity.UserProfile;
 import com.lyz.model.entity.UserRecommendation;
@@ -27,8 +26,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -82,7 +79,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             UserStatus userStatus = fatigueAnalyzer.analyze(feedbacks);
 
             // Step 2: 推导饮食硬性约束 (痛风、血糖等)
-            DietConstraints constraints = medicalContextBuilder.inferConstraints(
+            HealthConstraints constraints = medicalContextBuilder.inferConstraints(
                     profile.getExtractedMedicalData(), profile.getGender()
             );
 

@@ -9,7 +9,7 @@ import java.util.List;
  * (Step 2 Output)
  */
 @Data
-public class DietConstraints {
+public class HealthConstraints {
     /**
      * 必须严格禁止的食物类别 (e.g., "海鲜", "高糖饮料")
      */
@@ -24,6 +24,11 @@ public class DietConstraints {
      * 饮食策略标签 (e.g., "低嘌呤饮食", "低GI饮食")
      */
     private List<String> strategyTags = new ArrayList<>();
+
+    /**
+     * 训练风险与禁忌 (e.g., "高血压禁用瓦式呼吸", "低血糖避免空腹运动")
+     */
+    private List<String> trainingRisks = new ArrayList<>();
 
     /**
      * 风险提示文案 (用于展示给用户或放入Prompt)
