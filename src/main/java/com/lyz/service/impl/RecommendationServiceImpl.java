@@ -115,7 +115,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             String rawResponse = zhipuAiClient.chat(systemPrompt, userPrompt, DEFAULT_MODEL, DEFAULT_TEMPERATURE, DEFAULT_TOP_P);
 
             // 4. 解析与持久化 (Parsing & Persistence)
-            List<RecommendationPlanVO> plans = parseAndPersist(userId, rawResponse);
+            List<RecommendationPlanVO> plans = parseAndPersist(userId, rawResponse, profile);
             return plans;
 
         } catch (Exception e) {
@@ -197,29 +197,16 @@ public class RecommendationServiceImpl implements RecommendationService {
         return String.join("; ", prefs);
     }
 
-    private List<RecommendationPlanVO> parseAndPersist(Long userId, String rawResponse) throws JsonProcessingException {
+    private List<RecommendationPlanVO> parseAndPersist(Long userId, String rawResponse, UserProfile profile) throws JsonProcessingException {
         String jsonPayload = extractJsonBlock(rawResponse);
         List<RecommendationPlanVO> plans = objectMapper.readValue(jsonPayload, new TypeReference<>() {});
 
         if (plans != null && !plans.isEmpty()) {
-            RecommendationPlanVO chosen = plans.get(0);
-            try {
-                String planJson = objectMapper.writeValueAsString(chosen);
-                // 落库
-                UserRecommendation rec = new UserRecommendation();
-                rec.setUserId(userId);
-                rec.setDate(LocalDate.now());
-                rec.setPlanJson(planJson);
-                rec.setCreatedAt(LocalDateTime.now());
-                userRecommendationMapper.insertOrUpdate(rec);
-
-                // 缓存 Redis
-                String cacheKey = CACHE_KEY_PREFIX + userId + ":" + LocalDate.now().format(DateTimeFormatter.ISO_DATE);
-                Duration ttl = Duration.between(LocalDateTime.now(), LocalDate.now().atTime(23, 59, 59));
-                stringRedisTemplate.opsForValue().set(cacheKey, planJson, ttl);
-            } catch (Exception e) {
-                log.warn("保存计划失败，但已成功生成", e);
-            }
+            RecommendationPlanVO plan = plans.get(0);
+            // === 执行分餐计算逻辑 ===
+            calculateMealNutrition(plan.getDiet_plan(), profile);
+            // === 持久化 (保存到数据库和 Redis) ===
+            persistPlan(userId, plan);
         }
         return plans;
     }
@@ -268,6 +255,76 @@ public class RecommendationServiceImpl implements RecommendationService {
         }
         return null;
     }
+
+    /**
+     * 根据总热量和配置，分配三餐/四餐的指标
+     */
+    private void calculateMealNutrition(RecommendationPlanVO.Diet diet, UserProfile profile) {
+        if (diet == null || diet.getTotal_calories() == null) return;
+
+        // 1. 确定分配比例
+        boolean hasSnack = profile.getSnackTime() != null;
+        double[] ratios; // 早, 午, 晚, 加
+        if (hasSnack) {
+            ratios = new double[]{0.30, 0.40, 0.20, 0.10};
+        } else {
+            ratios = new double[]{0.30, 0.40, 0.30, 0.0};
+        }
+
+        // 2. 提取总量
+        int totalCal = diet.getTotal_calories();
+        int totalP = diet.getMacros().getProtein_g();
+        int totalC = diet.getMacros().getCarbs_g();
+        int totalF = diet.getMacros().getFat_g();
+
+        // 3. 计算并填充对象
+        diet.setBreakfast(createMeal("早餐", ratios[0], totalCal, totalP, totalC, totalF));
+        diet.setLunch(createMeal("午餐", ratios[1], totalCal, totalP, totalC, totalF));
+        diet.setDinner(createMeal("晚餐", ratios[2], totalCal, totalP, totalC, totalF));
+
+        if (hasSnack) {
+            diet.setSnack(createMeal("加餐", ratios[3], totalCal, totalP, totalC, totalF));
+        } else {
+            diet.setSnack(null);
+        }
+    }
+
+    private RecommendationPlanVO.Diet.Meal createMeal(String name, double ratio, int totalCal, int totalP, int totalC, int totalF) {
+        if (ratio <= 0) return null;
+
+        RecommendationPlanVO.Diet.Meal meal = new RecommendationPlanVO.Diet.Meal();
+        meal.setName(name);
+        meal.setCalories((int) (totalCal * ratio));
+
+        RecommendationPlanVO.Diet.Macros mealMacros = new RecommendationPlanVO.Diet.Macros();
+        mealMacros.setProtein_g((int) (totalP * ratio));
+        mealMacros.setCarbs_g((int) (totalC * ratio));
+        mealMacros.setFat_g((int) (totalF * ratio));
+        meal.setMacros(mealMacros);
+
+        // 生成简单的建议文案 (前端展示用)
+        meal.setSuggestion(String.format("热量约%dkcal，含蛋白%dg", meal.getCalories(), mealMacros.getProtein_g()));
+
+        return meal;
+    }
+
+    private void persistPlan(Long userId, RecommendationPlanVO plan) {
+        try {
+            String planJson = objectMapper.writeValueAsString(plan);
+
+            UserRecommendation rec = new UserRecommendation();
+            rec.setUserId(userId);
+            rec.setDate(LocalDate.now());
+            rec.setPlanJson(planJson);
+            rec.setCreatedAt(LocalDateTime.now());
+            userRecommendationMapper.insertOrUpdate(rec);
+
+            // Redis 缓存...
+        } catch (Exception e) {
+            log.warn("保存计划失败", e);
+        }
+    }
+
 
     // ================= 降级兜底 (简化版) =================
 

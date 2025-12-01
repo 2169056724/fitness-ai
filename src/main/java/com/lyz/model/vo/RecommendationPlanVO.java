@@ -46,13 +46,12 @@ public class RecommendationPlanVO {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Diet {
         // === 核心新字段 (对应 Prompt) ===
-        private String total_calories;      // 总热量
+        private Integer total_calories;      // 总热量
         private Macros macros;              // 宏量营养素
         private List<String> forbidden_categories; // 今日禁忌
         private String advice;              // 饮食建议/策略
 
-        // === 兼容旧字段 (保留以防止 WeChatTemplateMessageService 报错) ===
-        // 如果 AI 没生成这些，它们就是 null，通知服务会跳过发送，不会崩
+
         private Meal breakfast;
         private Meal lunch;
         private Meal dinner;
@@ -61,19 +60,18 @@ public class RecommendationPlanVO {
         @Data
         @JsonIgnoreProperties(ignoreUnknown = true)
         public static class Macros {
-            private String protein_g;
-            private String carbs_g;
-            private String fat_g;
+            private Integer protein_g;
+            private Integer carbs_g;
+            private Integer fat_g;
         }
 
         @Data
         @JsonIgnoreProperties(ignoreUnknown = true)
         public static class Meal {
-            private String calories;
-            @JsonDeserialize(using = PrecautionsDeserializer.class)
-            private String menu;
-            @JsonDeserialize(using = PrecautionsDeserializer.class)
-            private String nutrition;
+            private String name;        // "早餐"
+            private Integer calories;   // 本餐热量
+            private Macros macros;      // 本餐营养素
+            private String suggestion;  // 简单的建议 (后端生成或固定模板)
         }
     }
 
