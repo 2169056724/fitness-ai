@@ -18,17 +18,21 @@ import com.lyz.model.vo.RecommendationPlanVO;
 import com.lyz.service.RecommendationService;
 import com.lyz.service.analysis.FatigueAnalyzer;
 import com.lyz.service.builder.MedicalContextBuilder;
+import com.lyz.service.builder.PlanBuilder;
 import com.lyz.service.manager.PromptTemplateManager;
 import com.lyz.util.ZhipuAiClient;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -47,6 +51,7 @@ public class RecommendationServiceImpl implements RecommendationService {
     private static final double DEFAULT_TOP_P = 0.7;
     private static final String CACHE_KEY_PREFIX = "recommend:plans:";
     private static final int HISTORY_DAYS = 7;
+    private static final int LATE_NIGHT_HOUR = 20;
 
     // 依赖组件
     private final UserMapper userMapper;
@@ -62,6 +67,11 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate stringRedisTemplate;
+    private boolean isLateNight() {
+        return LocalTime.now().isAfter(LocalTime.of(LATE_NIGHT_HOUR, 0));
+    }
+    @Autowired
+    private PlanBuilder planBuilder;
 
     @Override
     public List<RecommendationPlanVO> generateDailyPlan(Long userId, RecommendationRequestDTO request) {
@@ -72,6 +82,11 @@ public class RecommendationServiceImpl implements RecommendationService {
         List<UserRecommendation> history = queryRecentPlans(userId, HISTORY_DAYS);
         List<UserFeedback> feedbacks = queryRecentFeedback(userId, HISTORY_DAYS);
         boolean isFirstTime = history.isEmpty();
+
+        // 如果是首次使用 且 当前时间晚于 20:00，不调用AI，直接建议休息
+        if (isFirstTime && isLateNight()) {
+            return planBuilder.buildRestPlan();
+        }
 
         // 2. 核心逻辑链 (Core Logic Pipeline)
         try {

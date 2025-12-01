@@ -235,7 +235,7 @@ public class WeChatTemplateMessageServiceImpl implements WeChatTemplateMessageSe
             String nutritionInfo = formatNutritionForTemplate(meal);
             data.put("thing2", createDataItem(nutritionInfo)); // 营养目标
             
-            data.put("thing3", createDataItem(formatCaloriesForTemplate(meal.getCalories()))); // 热量
+            data.put("thing3", createDataItem(meal.getCalories().toString())); // 热量
             data.put("time4", createDataItem(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年MM月dd日")))); // 日期
 
             requestBody.put("data", data);
@@ -303,7 +303,7 @@ public class WeChatTemplateMessageServiceImpl implements WeChatTemplateMessageSe
         }
         
         // 尝试从nutrition字段提取简洁信息
-        String nutrition = meal.getNutrition();
+        String nutrition = null;
         if (StringUtils.isNotBlank(nutrition)) {
             // 简化显示：提取蛋白质、碳水、脂肪的克数
             // 例如："蛋白质: 30g | 碳水: 50g | 脂肪: 15g" -> "蛋白30g 碳水50g 脂肪15g"
@@ -326,7 +326,7 @@ public class WeChatTemplateMessageServiceImpl implements WeChatTemplateMessageSe
         }
         
         // 回退到menu字段（兼容旧数据）
-        String menu = meal.getMenu();
+        String menu = null;
         if (StringUtils.isNotBlank(menu) && !menu.contains("请参考营养素比例")) {
             return formatMenuForTemplate(menu);
         }
