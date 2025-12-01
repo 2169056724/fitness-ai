@@ -342,7 +342,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         plan.setTraining_plan(t);
 
         RecommendationPlanVO.Diet d = new RecommendationPlanVO.Diet();
-        d.setTotal_calories("1800 kcal");
+        d.setTotal_calories(1800);
         d.setAdvice("请保持均衡饮食，多吃蔬菜，避免油腻。");
         plan.setDiet_plan(d);
 
