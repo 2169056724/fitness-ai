@@ -18,6 +18,7 @@ public class UserPromptContext {
     // === 核心动态状态 (Step 1 & 2 的产物) ===
     private UserStatus userStatus;       // 疲劳度、心态、趋势
     private HealthConstraints constraints; // 饮食禁忌、红线
+    private String medicalAdviceText; // 新增：数据库缓存的医疗建议字符串
 
     // === 场景控制 ===
     private boolean isFirstTime;     // 是否首次

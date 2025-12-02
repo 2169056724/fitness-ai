@@ -26,14 +26,5 @@ public interface UserService {
      */
     UserBasicInfoVO getUserBasicInfo(Long userId);
 
-
-//    /**
-//     * 根据用户ID查询用户信息
-//     */
-//    UserInfoVO getUserBasicInfo(Long userId);
-//
-//    /**
-//     * 更新用户信息
-//     */
-//    UserInfoVO updateUserInfo(Long userId, UpdateUserInfoDTO updateDTO);
+    
 }

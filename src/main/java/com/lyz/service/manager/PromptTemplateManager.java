@@ -17,12 +17,12 @@ public class PromptTemplateManager {
 
     private static final String SYSTEM_PROMPT_TEMPLATE = """
             你是一名专业的体能训练与营养专家。请根据用户数据生成今日计划。
-            
+                        
             【核心原则】
             1. 饮食：不提供具体菜单，只计算【每日需摄入的总热量】及【三大营养素克数】，并根据病史列出【今日严格禁忌】。
             2. 训练：仅生成【今日一天】的计划，标题必须体现今日训练重点（如"下肢力量"或"全身恢复"）。
             3. 风控：若用户疲劳度高，强制安排恢复性训练；若有伤痛，避开相关部位。
-            
+                        
             【输出格式】
             请严格仅输出以下 JSON 格式（不要包含 Markdown 代码块标记）：
             [
@@ -84,28 +84,36 @@ public class PromptTemplateManager {
             sb.append(String.format("- 📝 用户主观日记（请重点参考）：\"%s\"\n", status.getLatestNote()));
         }
 
-        // 3. 饮食约束区
-        HealthConstraints diet = ctx.getConstraints();
+        // 3. 饮食约束区 - 【修改点】
         sb.append("\n【医学风险与禁忌 (体检分析)】\n");
-        // 3.1 饮食禁忌
-        if (!diet.getForbiddenCategories().isEmpty()) {
-            sb.append(String.format("- 🚫 饮食绝对禁忌：%s\n",
-                    String.join(", ", diet.getForbiddenCategories())));
-        }
 
-        // 3.2 训练禁忌
-        if (!diet.getTrainingRisks().isEmpty()) {
-            sb.append(String.format("- ⚠️ 训练安全红线（严格遵守）：%s\n",
-                    String.join("; ", diet.getTrainingRisks())));
+        // 优先使用缓存的文本字符串
+        if (StringUtils.isNotBlank(ctx.getMedicalAdviceText())) {
+            sb.append(ctx.getMedicalAdviceText()).append("\n");
         }
-
-        // 3.3 综合风险
-        if (StringUtils.isNotBlank(diet.getRiskWarning())) {
-            sb.append(String.format("- 综合风险提示：%s\n", diet.getRiskWarning()));
-        }
-
-        if (diet.getForbiddenCategories().isEmpty() && diet.getTrainingRisks().isEmpty() && StringUtils.isBlank(diet.getRiskWarning())) {
-            sb.append("- 体检指标正常，无特殊医学限制。\n");
+        // 否则使用结构化对象生成 (兼容旧逻辑或缓存未命中的情况)
+        else if (ctx.getConstraints() != null) {
+            HealthConstraints diet = ctx.getConstraints();
+            // 3.1 饮食禁忌
+            if (!diet.getForbiddenCategories().isEmpty()) {
+                sb.append(String.format("- 🚫 饮食绝对禁忌：%s\n",
+                        String.join(", ", diet.getForbiddenCategories())));
+            }
+            // 3.2 训练禁忌
+            if (!diet.getTrainingRisks().isEmpty()) {
+                sb.append(String.format("- ⚠️ 训练安全红线（严格遵守）：%s\n",
+                        String.join("; ", diet.getTrainingRisks())));
+            }
+            // 3.3 综合风险
+            if (StringUtils.isNotBlank(diet.getRiskWarning())) {
+                sb.append(String.format("- 综合风险提示：%s\n", diet.getRiskWarning()));
+            }
+            // 无限制
+            if (diet.getForbiddenCategories().isEmpty() && diet.getTrainingRisks().isEmpty() && StringUtils.isBlank(diet.getRiskWarning())) {
+                sb.append("- 体检指标正常，无特殊医学限制。\n");
+            }
+        } else {
+            sb.append("- 暂无体检数据参考。\n");
         }
 
         // 3. 训练上下文

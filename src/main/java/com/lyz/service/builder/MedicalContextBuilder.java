@@ -31,7 +31,7 @@ public class MedicalContextBuilder {
      * 【新核心方法】基于体检数据推导结构化约束
      * @param extractedMedicalData 体检JSON
      * @param gender 性别
-     * @return 饮食约束对象
+     * @return 饮食训练约束对象
      */
     public HealthConstraints inferConstraints(String extractedMedicalData, Integer gender) {
         HealthConstraints constraints = new HealthConstraints();

@@ -93,10 +93,22 @@ public class RecommendationServiceImpl implements RecommendationService {
             // Step 1: 分析用户当前状态 (疲劳、心态、趋势)
             UserStatus userStatus = fatigueAnalyzer.analyze(feedbacks);
 
-            // Step 2: 推导饮食硬性约束 (痛风、血糖等)
-            HealthConstraints constraints = medicalContextBuilder.inferConstraints(
-                    profile.getExtractedMedicalData(), profile.getGender()
-            );
+            // Step 2: 获取医疗建议 (优先使用 DB 缓存) - 【修改点】
+            String medicalAdviceText = profile.getMedicalAdvicePrompt();
+            HealthConstraints constraints = null;
+
+            if (StringUtils.isBlank(medicalAdviceText)) {
+                // 缓存为空，执行动态推导 (降级策略)
+                if (StringUtils.isNotBlank(profile.getExtractedMedicalData())) {
+                    constraints = medicalContextBuilder.inferConstraints(
+                            profile.getExtractedMedicalData(), profile.getGender()
+                    );
+                    // 可以在这里选择是否回写数据库缓存，或者等待下次上传文件时更新
+                } else {
+                    // 无体检数据
+                    constraints = new HealthConstraints();
+                }
+            }
 
             // Step 3: 只返回"强制干预指令"，常规情况返回 null
             String targetFocus = determineTrainingFocus(userStatus);
@@ -114,6 +126,7 @@ public class RecommendationServiceImpl implements RecommendationService {
                     .goal(profile.getGoal())
                     .preferences(formatPreferences(profile))
                     .userStatus(userStatus)
+                    .medicalAdviceText(medicalAdviceText)
                     .constraints(constraints)
                     .isFirstTime(isFirstTime)
                     .targetFocus(targetFocus)
