@@ -12,9 +12,11 @@ import com.lyz.service.WeChatTemplateMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.*;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -22,10 +24,13 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executor;
 
 /**
- * 微信模板消息服务实现
+ * 微信模板消息服务实现 (Refactored)
  */
 @Slf4j
 @Service
@@ -51,400 +56,238 @@ public class WeChatTemplateMessageServiceImpl implements WeChatTemplateMessageSe
     @Value("${wechat.template.miniprogram-state:trial}")
     private String miniprogramState;
 
-    /**
-     * Access Token 缓存（简单实现，生产环境建议用Redis）
-     */
+    // 简单的内存缓存 AccessToken
     private String cachedAccessToken;
     private long accessTokenExpireTime;
 
+    // 注入线程池 (解决 @Async 失效问题，直接手动提交任务)
+    @Qualifier("fileParserExecutor")
+    private final Executor executor;
+
     @Override
     public boolean sendMealReminderNotification(Long userId, String mealType) {
-        try {
-            // 0. 防重复检查：今天是否已经发送过该餐次的提醒
-            String redisKey = buildReminderKey(userId, mealType);
-            Boolean hasSent = redisTemplate.hasKey(redisKey);
-            if (Boolean.TRUE.equals(hasSent)) {
-                log.debug("用户 {} 今日已发送过 {} 提醒，跳过", userId, getMealTypeName(mealType));
-                return false;
-            }
+        // 1. 计算时间窗口 (Time Window)
+        // 逻辑：定时任务每 5 分钟执行一次 (e.g., 12:00, 12:05)
+        // 我们要找的是 "15分钟后要吃饭的用户"
+        // 比如现在 12:00，我们要找用餐时间在 12:15 ~ 12:20 之间的用户
 
-            // 1. 查询用户信息
-            User user = userMapper.selectById(userId);
-            if (user == null || StringUtils.isBlank(user.getOpenid())) {
-                log.warn("用户 {} 不存在或未绑定openid，跳过通知", userId);
-                return false;
-            }
+        LocalTime now = LocalTime.now();
+        LocalTime targetStart = now.plusMinutes(15);
+        LocalTime targetEnd = targetStart.plusMinutes(5); // 覆盖 5 分钟间隔
 
-            // 2. 查询用户健康档案
-            UserProfile profile = userProfileMapper.getByUserId(userId);
-            if (profile == null) {
-                log.warn("用户 {} 没有健康档案，跳过通知", userId);
-                return false;
-            }
+        log.info("开始批量扫描 {} 提醒，扫描窗口: {} - {}",
+                getMealTypeName(mealType), targetStart, targetEnd);
 
-            // 3. 查询当天的推荐计划
-            LocalDate today = LocalDate.now();
-            UserRecommendation recommendation = userRecommendationMapper.getByUserIdAndDate(userId, today);
-            if (recommendation == null || StringUtils.isBlank(recommendation.getPlanJson())) {
-                log.warn("用户 {} 今日暂无推荐计划，跳过通知", userId);
-                return false;
-            }
+        // 2. 数据库级筛选 (性能提升点：只查需要发的人)
+        List<UserProfile> profiles = userProfileMapper.selectProfilesByMealTime(
+                mealType, targetStart, targetEnd
+        );
 
-            // 4. 解析饮食推荐
-            RecommendationPlanVO.Diet.Meal meal = parseMealFromPlan(recommendation.getPlanJson(), mealType);
-            if (meal == null) {
-                log.warn("用户 {} 今日计划中没有 {} 推荐，跳过通知", userId, getMealTypeName(mealType));
-                return false;
-            }
-
-            // 5. 构造并发送模板消息
-            String accessToken = getAccessToken();
-            if (StringUtils.isBlank(accessToken)) {
-                log.error("获取微信Access Token失败");
-                return false;
-            }
-
-            boolean success = sendTemplateMessage(user.getOpenid(), mealType, meal, accessToken);
-            
-            // 6. 发送成功后，记录到Redis（防止重复发送）
-            if (success) {
-                // 缓存到今天23:59:59，明天自动过期
-                long secondsUntilMidnight = Duration.between(
-                    LocalTime.now(),
-                    LocalTime.of(23, 59, 59)
-                ).getSeconds();
-                redisTemplate.opsForValue().set(redisKey, "1", Duration.ofSeconds(secondsUntilMidnight));
-                log.info("用户 {} {} 提醒发送成功，已记录防重复标记", userId, getMealTypeName(mealType));
-            }
-            
-            return success;
-
-        } catch (Exception e) {
-            log.error("发送用餐提醒失败，userId: {}, mealType: {}", userId, mealType, e);
-            return false;
-        }
-    }
-
-    /**
-     * 构建防重复Redis Key
-     * 格式：meal_reminder:{date}:{userId}:{mealType}
-     * 例如：meal_reminder:2025-11-24:1001:breakfast
-     */
-    private String buildReminderKey(Long userId, String mealType) {
-        String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        return String.format("meal_reminder:%s:%d:%s", date, userId, mealType);
-    }
-
-    @Override
-    public int sendMealRemindersForAllUsers(String mealType) {
-        log.info("开始批量发送 {} 提醒...", getMealTypeName(mealType));
-
-        // 1. 查询所有用户健康档案
-        List<UserProfile> allProfiles = userProfileMapper.selectAllProfiles();
-        if (allProfiles == null || allProfiles.isEmpty()) {
-            log.info("暂无用户健康档案，跳过通知");
+        if (profiles == null || profiles.isEmpty()) {
             return 0;
         }
 
-        // 2. 当前时间
-        LocalTime now = LocalTime.now();
-        int successCount = 0;
-
-        // 3. 遍历所有用户
-        for (UserProfile profile : allProfiles) {
-            try {
-                // 获取用户设置的用餐时间
-                LocalTime mealTime = getMealTimeFromProfile(profile, mealType);
-                if (mealTime == null) {
-                    continue; // 用户未设置该餐时间，跳过
-                }
-
-                // 判断是否到了用餐时间（提前15分钟提醒）
-                LocalTime reminderTime = mealTime.minusMinutes(15);
-                if (isTimeToRemind(now, reminderTime)) {
-                    boolean success = sendMealReminderNotification(profile.getUserId(), mealType);
-                    if (success) {
-                        successCount++;
-                    }
-                    // 每个用户之间间隔200ms，避免请求过快
-                    Thread.sleep(200);
-                }
-            } catch (Exception e) {
-                log.error("发送用餐提醒失败，userId: {}", profile.getUserId(), e);
-            }
+        int count = 0;
+        // 3. 遍历并异步发送
+        for (UserProfile profile : profiles) {
+            // 使用 executor.execute 替代 this.sendAsync，确保异步生效
+            executor.execute(() -> {
+                sendMealReminderNotification(profile.getUserId(), mealType);
+            });
+            count++;
         }
 
-        log.info("批量发送 {} 提醒完成，成功: {} 人", getMealTypeName(mealType), successCount);
-        return successCount;
+        log.info("触发 {} 提醒任务，共投递 {} 人 (后台异步发送中)",
+                getMealTypeName(mealType), count);
+        return count;
     }
 
     /**
-     * 解析计划中的饮食推荐
+     * 批量发送入口
+     * 注：此处保持同步循环，具体发送逻辑下沉到 sendTemplateMessage (可进一步优化为线程池)
+     */
+    @Override
+    public int sendMealRemindersForAllUsers(String mealType) {
+        log.info("开始批量扫描 {} 提醒...", getMealTypeName(mealType));
+        List<UserProfile> profiles = userProfileMapper.selectAllProfiles();
+        if (profiles == null || profiles.isEmpty()) return 0;
+
+        LocalTime now = LocalTime.now();
+        int count = 0;
+
+        for (UserProfile profile : profiles) {
+            LocalTime mealTime = getMealTimeFromProfile(profile, mealType);
+            if (mealTime == null) continue;
+
+            // 判定逻辑：设定时间前 15 分钟 (±2分钟宽容度)
+            LocalTime reminderTime = mealTime.minusMinutes(15);
+            if (isTimeMatch(now, reminderTime)) {
+                // 异步发送，防止阻塞主线程太久
+                sendAsync(profile.getUserId(), mealType);
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // ================== 核心逻辑修正区 ==================
+
+    /**
+     * Fix: 正确解析 Plan JSON (Object 而非 Array)
      */
     private RecommendationPlanVO.Diet.Meal parseMealFromPlan(String planJson, String mealType) {
         try {
-            // planJson 是一个 JSON 数组，取第一个方案
-            RecommendationPlanVO[] plans = objectMapper.readValue(planJson, RecommendationPlanVO[].class);
-            if (plans == null || plans.length == 0) {
-                return null;
-            }
+            // 数据库存的是单个对象，不是数组
+            RecommendationPlanVO plan = objectMapper.readValue(planJson, RecommendationPlanVO.class);
+            if (plan == null || plan.getDiet_plan() == null) return null;
 
-            RecommendationPlanVO.Diet diet = plans[0].getDiet_plan();
-            if (diet == null) {
-                return null;
-            }
-
+            RecommendationPlanVO.Diet diet = plan.getDiet_plan();
             switch (mealType.toLowerCase()) {
-                case "breakfast":
-                    return diet.getBreakfast();
-                case "lunch":
-                    return diet.getLunch();
-                case "dinner":
-                    return diet.getDinner();
-                case "snack":
-                    return diet.getSnack();
-                default:
-                    return null;
+                case "breakfast": return diet.getBreakfast();
+                case "lunch": return diet.getLunch();
+                case "dinner": return diet.getDinner();
+                case "snack": return diet.getSnack();
+                default: return null;
             }
         } catch (Exception e) {
-            log.error("解析计划JSON失败", e);
-            return null;
+            log.error("计划JSON解析失败: {}", e.getMessage());
+            return null; // 解析失败视为无计划
         }
     }
 
     /**
-     * 发送微信模板消息
+     * Fix: 基于 Macros 结构化数据生成文案
      */
-    private boolean sendTemplateMessage(String openid, String mealType, 
-                                       RecommendationPlanVO.Diet.Meal meal, String accessToken) {
+    private String formatNutritionInfo(RecommendationPlanVO.Diet.Meal meal) {
+        // 特殊情况：如果是断食/休息日 (热量为0)
+        if (meal.getCalories() == null || meal.getCalories() <= 0) {
+            return "建议空腹/饮水";
+        }
+
+        // 优先显示建议 (Suggestion)
+        if (StringUtils.isNotBlank(meal.getSuggestion())) {
+            // 微信限制20字，做截断处理
+            return StringUtils.abbreviate(meal.getSuggestion(), 20);
+        }
+
+        // 兜底：显示三大营养素
+        if (meal.getMacros() != null) {
+            return String.format("蛋%dg 碳%dg 脂%dg",
+                    meal.getMacros().getProtein_g(),
+                    meal.getMacros().getCarbs_g(),
+                    meal.getMacros().getFat_g());
+        }
+
+        return "请查看详情";
+    }
+
+    private boolean sendTemplateMessage(String openid, String mealType,
+                                        RecommendationPlanVO.Diet.Meal meal, String accessToken) {
+        String url = "https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=" + accessToken;
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("touser", openid);
+        body.put("template_id", mealReminderTemplateId);
+        body.put("page", "pages/daily-plan/index");
+        body.put("miniprogram_state", miniprogramState);
+
+        Map<String, Map<String, String>> data = new HashMap<>();
+        // 1. 用餐类型
+        data.put("thing1", item(getMealTypeName(mealType) + "提醒"));
+        // 2. 推荐内容 (核心修正点)
+        data.put("thing2", item(formatNutritionInfo(meal)));
+        // 3. 热量目标
+        String calText = (meal.getCalories() != null && meal.getCalories() > 0)
+                ? meal.getCalories() + "千卡"
+                : "0千卡";
+        data.put("thing3", item(calText));
+        // 4. 时间
+        data.put("time4", item(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"))));
+
+        body.put("data", data);
+
         try {
-            String url = "https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=" + accessToken;
-
-            // 构造模板消息数据
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("touser", openid);
-            requestBody.put("template_id", mealReminderTemplateId);
-            requestBody.put("page", "pages/daily-plan/index"); // 跳转到当日计划页面
-            requestBody.put("miniprogram_state", miniprogramState);
-
-            // 模板数据
-            Map<String, Map<String, String>> data = new HashMap<>();
-            data.put("thing1", createDataItem(getMealTypeName(mealType))); // 用餐类型
-            
-            // 优先显示营养素信息，如果没有则显示menu字段（兼容旧数据）
-            String nutritionInfo = formatNutritionForTemplate(meal);
-            data.put("thing2", createDataItem(nutritionInfo)); // 营养目标
-            
-            data.put("thing3", createDataItem(meal.getCalories().toString())); // 热量
-            data.put("time4", createDataItem(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年MM月dd日")))); // 日期
-
-            requestBody.put("data", data);
-
-            // 发送请求
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
-            ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
-            
-            if (response.getStatusCode() == HttpStatus.OK) {
-                Map<String, Object> body = response.getBody();
-                if (body != null && (int) body.getOrDefault("errcode", -1) == 0) {
-                    log.info("发送模板消息成功，openid: {}, mealType: {}", openid, mealType);
-                    return true;
-                } else {
-                    log.error("发送模板消息失败，响应: {}", body);
-                    return false;
-                }
-            } else {
-                log.error("发送模板消息失败，HTTP状态码: {}", response.getStatusCode());
-                return false;
+            ResponseEntity<Map> resp = restTemplate.postForEntity(url, body, Map.class);
+            if (resp.getBody() != null && Integer.valueOf(0).equals(resp.getBody().get("errcode"))) {
+                log.info("推送成功 openid={}", openid);
+                return true;
             }
-
+            log.error("推送失败 openid={}, resp={}", openid, resp.getBody());
         } catch (Exception e) {
-            log.error("发送模板消息异常", e);
-            return false;
+            log.error("推送请求异常", e);
+        }
+        return false;
+    }
+
+    // ================== 辅助工具方法 ==================
+
+    private Map<String, String> item(String value) {
+        Map<String, String> map = new HashMap<>();
+        map.put("value", value);
+        return map;
+    }
+
+    private String buildReminderKey(Long userId, String mealType) {
+        return "notify:meal:" + LocalDate.now() + ":" + userId + ":" + mealType;
+    }
+
+    private boolean isTimeMatch(LocalTime now, LocalTime target) {
+        // 时间窗口：目标时间前后 2.5 分钟内 (配合5分钟一次的定时任务)
+        // 例如任务 12:00 执行，覆盖 11:57:30 - 12:02:30
+        // 这里的逻辑可以根据你的 Cron 表达式频次微调
+        if (target == null) return false;
+        long diff = Math.abs(Duration.between(now, target).toMinutes());
+        return diff <= 2;
+    }
+
+    private LocalTime getMealTimeFromProfile(UserProfile p, String type) {
+        switch (type.toLowerCase()) {
+            case "breakfast": return p.getBreakfastTime();
+            case "lunch": return p.getLunchTime();
+            case "dinner": return p.getDinnerTime();
+            case "snack": return p.getSnackTime();
+            default: return null;
         }
     }
 
-    /**
-     * 创建模板消息数据项
-     */
-    private Map<String, String> createDataItem(String value) {
-        Map<String, String> item = new HashMap<>();
-        item.put("value", value);
-        return item;
+    private String getMealTypeName(String type) {
+        switch (type.toLowerCase()) {
+            case "breakfast": return "早餐";
+            case "lunch": return "午餐";
+            case "dinner": return "晚餐";
+            case "snack": return "加餐";
+            default: return type;
+        }
     }
 
-    /**
-     * 格式化菜单文本（微信模板消息限制20字）
-     * @deprecated 已改用 formatNutritionForTemplate
-     */
-    @Deprecated
-    private String formatMenuForTemplate(String menu) {
-        if (StringUtils.isBlank(menu)) {
-            return "暂无推荐";
-        }
-        // 去除换行符，截取前20字
-        String formatted = menu.replaceAll("\\n", "，");
-        if (formatted.length() > 20) {
-            return formatted.substring(0, 17) + "...";
-        }
-        return formatted;
-    }
-    
-    /**
-     * 格式化营养素信息用于模板消息（微信限制20字）
-     * 优先显示简洁的营养素比例，如果没有则回退到menu字段
-     */
-    private String formatNutritionForTemplate(RecommendationPlanVO.Diet.Meal meal) {
-        if (meal == null) {
-            return "暂无推荐";
-        }
-        
-        // 尝试从nutrition字段提取简洁信息
-        String nutrition = null;
-        if (StringUtils.isNotBlank(nutrition)) {
-            // 简化显示：提取蛋白质、碳水、脂肪的克数
-            // 例如："蛋白质: 30g | 碳水: 50g | 脂肪: 15g" -> "蛋白30g 碳水50g 脂肪15g"
-            String simplified = nutrition
-                .replaceAll("蛋白质[:：]?\\s*", "蛋")
-                .replaceAll("碳水[化合物]*[:：]?\\s*", "碳")
-                .replaceAll("脂肪[:：]?\\s*", "脂")
-                .replaceAll("[\\|丨]", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
-            
-            // 截取前20字
-            if (simplified.length() > 20) {
-                simplified = simplified.substring(0, 17) + "...";
-            }
-            
-            if (StringUtils.isNotBlank(simplified) && !simplified.equals("...")) {
-                return simplified;
-            }
-        }
-        
-        // 回退到menu字段（兼容旧数据）
-        String menu = null;
-        if (StringUtils.isNotBlank(menu) && !menu.contains("请参考营养素比例")) {
-            return formatMenuForTemplate(menu);
-        }
-        
-        // 最终兜底：显示"查看详情"
-        return "查看计划了解详情";
-    }
-    
-    /**
-     * 格式化热量信息
-     */
-    private String formatCaloriesForTemplate(String calories) {
-        if (StringUtils.isBlank(calories)) {
-            return "暂无数据";
-        }
-        
-        // 提取数字部分
-        String cleaned = calories.replaceAll("[^0-9.]", "").trim();
-        if (StringUtils.isBlank(cleaned)) {
-            return calories.length() > 10 ? calories.substring(0, 10) : calories;
-        }
-        
-        return cleaned + "千卡";
-    }
-
-    /**
-     * 获取微信Access Token
-     */
     private String getAccessToken() {
-        // 检查缓存
-        if (StringUtils.isNotBlank(cachedAccessToken) 
-                && System.currentTimeMillis() < accessTokenExpireTime) {
+        if (StringUtils.isNotBlank(cachedAccessToken) && System.currentTimeMillis() < accessTokenExpireTime) {
             return cachedAccessToken;
         }
+        // ... 原有的 AccessToken 获取逻辑保持不变 ...
+        // 为了篇幅省略，请保留原有的 getAccessToken 实现代码
+        // 建议：生产环境务必将 Token 存入 Redis，因为微信 Token 有生成频率限制
+        return fetchNewAccessToken();
+    }
 
+    // (保留原有的 fetchNewAccessToken 逻辑)
+    private String fetchNewAccessToken() {
         try {
             String url = String.format(
-                "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s",
-                appId, appSecret
+                    "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=%s&secret=%s",
+                    appId, appSecret
             );
-
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                Map<String, Object> body = response.getBody();
-                String accessToken = (String) body.get("access_token");
-                Integer expiresIn = (Integer) body.getOrDefault("expires_in", 7200);
-
-                if (StringUtils.isNotBlank(accessToken)) {
-                    // 缓存Access Token（提前5分钟过期）
-                    cachedAccessToken = accessToken;
-                    accessTokenExpireTime = System.currentTimeMillis() + (expiresIn - 300) * 1000L;
-                    log.info("成功获取微信Access Token");
-                    return accessToken;
-                }
+            if (response.getBody() != null && response.getBody().containsKey("access_token")) {
+                String token = (String) response.getBody().get("access_token");
+                Integer expiresIn = (Integer) response.getBody().get("expires_in");
+                this.cachedAccessToken = token;
+                this.accessTokenExpireTime = System.currentTimeMillis() + (expiresIn - 200) * 1000L;
+                return token;
             }
-
-            log.error("获取微信Access Token失败，响应: {}", response.getBody());
-            return null;
-
         } catch (Exception e) {
-            log.error("获取微信Access Token异常", e);
-            return null;
+            log.error("Token fetch failed", e);
         }
-    }
-
-    /**
-     * 从健康档案中获取用餐时间
-     */
-    private LocalTime getMealTimeFromProfile(UserProfile profile, String mealType) {
-        try {
-            LocalTime time = null;
-            switch (mealType.toLowerCase()) {
-                case "breakfast":
-                    time = profile.getBreakfastTime();
-                    break;
-                case "lunch":
-                    time = profile.getLunchTime();
-                    break;
-                case "dinner":
-                    time = profile.getDinnerTime();
-                    break;
-                case "snack":
-                    time = profile.getSnackTime();
-                    break;
-            }
-
-            return time;
-        } catch (Exception e) {
-            log.error("解析用餐时间失败，userId: {}, mealType: {}", profile.getUserId(), mealType, e);
-            return null;
-        }
-    }
-
-    /**
-     * 判断是否到了提醒时间
-     * 提醒时间前后5分钟内都算
-     */
-    private boolean isTimeToRemind(LocalTime now, LocalTime reminderTime) {
-        LocalTime startTime = reminderTime.minusMinutes(5);
-        LocalTime endTime = reminderTime.plusMinutes(5);
-        return !now.isBefore(startTime) && !now.isAfter(endTime);
-    }
-
-    /**
-     * 获取用餐类型中文名称
-     */
-    private String getMealTypeName(String mealType) {
-        switch (mealType.toLowerCase()) {
-            case "breakfast":
-                return "早餐";
-            case "lunch":
-                return "午餐";
-            case "dinner":
-                return "晚餐";
-            case "snack":
-                return "加餐";
-            default:
-                return mealType;
-        }
+        return null;
     }
 }

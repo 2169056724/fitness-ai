@@ -70,8 +70,8 @@ public class RecommendationServiceImpl implements RecommendationService {
     private boolean isLateNight() {
         return LocalTime.now().isAfter(LocalTime.of(LATE_NIGHT_HOUR, 0));
     }
-    @Autowired
-    private PlanBuilder planBuilder;
+
+    private final PlanBuilder planBuilder;
 
     @Override
     public List<RecommendationPlanVO> generateDailyPlan(Long userId, RecommendationRequestDTO request) {

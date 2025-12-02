@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalTime;
 import java.util.List;
 
 @Mapper
@@ -24,7 +25,6 @@ public interface UserProfileMapper {
 
     /**
      * 更新用户健康档案
-     * @param userId
      * @param userProfile
      */
     void updateProfile(UserProfile userProfile);
@@ -47,4 +47,16 @@ public interface UserProfileMapper {
      * @return 活跃用户的健康档案列表
      */
     List<UserProfile> selectActiveProfiles(@Param("days") int days);
+
+    /**
+     * 查询指定用餐时间段内的用户
+     * @param mealType 用餐类型 (breakfast/lunch/dinner/snack)
+     * @param startTime 开始时间 (包含)
+     * @param endTime 结束时间 (不包含)
+     */
+    List<UserProfile> selectProfilesByMealTime(
+            @Param("mealType") String mealType,
+            @Param("startTime") LocalTime startTime,
+            @Param("endTime") LocalTime endTime
+    );
 }
