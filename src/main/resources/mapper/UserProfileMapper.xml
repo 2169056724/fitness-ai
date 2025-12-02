@@ -189,25 +189,6 @@
         ORDER BY u.last_login_at DESC
     </select>
 
-    <select id="selectProfilesByMealTime" resultMap="BaseResultMap">
-        SELECT <include refid="Base_Column_List"/>
-        FROM user_profile
-        WHERE 1=1
-        <choose>
-            <when test="mealType == 'breakfast'">
-                AND breakfast_time >= #{startTime} AND breakfast_time &lt; #{endTime}
-            </when>
-            <when test="mealType == 'lunch'">
-                AND lunch_time >= #{startTime} AND lunch_time &lt; #{endTime}
-            </when>
-            <when test="mealType == 'dinner'">
-                AND dinner_time >= #{startTime} AND dinner_time &lt; #{endTime}
-            </when>
-            <when test="mealType == 'snack'">
-                AND snack_time >= #{startTime} AND snack_time &lt; #{endTime}
-            </when>
-        </choose>
-    </select>
 
 
 </mapper>

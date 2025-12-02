@@ -48,15 +48,4 @@ public interface UserProfileMapper {
      */
     List<UserProfile> selectActiveProfiles(@Param("days") int days);
 
-    /**
-     * 查询指定用餐时间段内的用户
-     * @param mealType 用餐类型 (breakfast/lunch/dinner/snack)
-     * @param startTime 开始时间 (包含)
-     * @param endTime 结束时间 (不包含)
-     */
-    List<UserProfile> selectProfilesByMealTime(
-            @Param("mealType") String mealType,
-            @Param("startTime") LocalTime startTime,
-            @Param("endTime") LocalTime endTime
-    );
 }
