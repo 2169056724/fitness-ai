@@ -10,6 +10,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -40,6 +41,8 @@ public class FatigueAnalyzer {
             status.setRecentTrend("暂无近期反馈数据，按标准流程进行");
             return status;
         }
+        // 数据库查出来是 DESC (新->旧)，我们反转成 ASC (旧->新) 以符合分析逻辑
+        Collections.reverse(recentFeedbacks);
 
         analyzeTrends(recentFeedbacks, status);
         analyzeEmotionAndBodyParts(recentFeedbacks, status);
@@ -81,6 +84,7 @@ public class FatigueAnalyzer {
         }
     }
 
+    //TODO 3天还未包含昨天，且顺序是倒序
     private void analyzeEmotionAndBodyParts(List<UserFeedback> feedbacks, UserStatus status) {
         // 只分析最近 3 天的反馈来决定当天的疲劳部位
         int checkSize = Math.min(feedbacks.size(), 3);

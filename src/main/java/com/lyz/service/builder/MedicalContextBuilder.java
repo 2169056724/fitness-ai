@@ -64,20 +64,33 @@ public class MedicalContextBuilder {
     public String generateMedicalAdvicePrompt(String extractedMedicalData, Integer gender) {
         HealthConstraints constraints = inferConstraints(extractedMedicalData, gender);
 
-        // 如果没有风险，返回空
-        if (StringUtils.isBlank(constraints.getRiskWarning())) {
-            return "";
+        // 如果没有任何风险，返回空
+        if (StringUtils.isBlank(constraints.getRiskWarning())
+                && constraints.getForbiddenCategories().isEmpty()
+                && constraints.getTrainingRisks().isEmpty()) {
+            return "HEALTHY_NO_ADVICE";
         }
 
-        // 将结构化对象转回字符串，供 DB 存储 (旧逻辑依赖)
-        StringBuilder sb = new StringBuilder("- Medical Risk & Advice: ");
-        sb.append(constraints.getRiskWarning());
+        StringBuilder sb = new StringBuilder();
 
+        // 1. 饮食禁忌
         if (!constraints.getForbiddenCategories().isEmpty()) {
-            sb.append(" Forbidden: ").append(String.join(", ", constraints.getForbiddenCategories())).append(";");
+            sb.append(" - 🚫 饮食绝对禁忌：").append(String.join(", ", constraints.getForbiddenCategories())).append(";\n");
         }
+
+        // 2. 训练禁忌 (补上缺失的字段)
+        if (!constraints.getTrainingRisks().isEmpty()) {
+            sb.append(" - ⚠️ 训练安全红线：").append(String.join("; ", constraints.getTrainingRisks())).append(";\n");
+        }
+
+        // 3. 策略标签
         if (!constraints.getStrategyTags().isEmpty()) {
-            sb.append(" Strategy: ").append(String.join(", ", constraints.getStrategyTags())).append(";");
+            sb.append(" - 💡 建议策略：").append(String.join(", ", constraints.getStrategyTags())).append(";\n");
+        }
+
+        // 4. 综合风险
+        if (StringUtils.isNotBlank(constraints.getRiskWarning())) {
+            sb.append(" - 综合风险提示：").append(constraints.getRiskWarning());
         }
 
         return sb.toString();

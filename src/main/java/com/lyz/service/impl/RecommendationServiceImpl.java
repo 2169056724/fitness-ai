@@ -76,37 +76,47 @@ public class RecommendationServiceImpl implements RecommendationService {
     @Override
     public List<RecommendationPlanVO> generateDailyPlan(Long userId, RecommendationRequestDTO request) {
         // 1. 数据准备 (Data Preparation)
+        //TODO 后续可以存到缓存，若需要
         UserProfile profile = userProfileMapper.getByUserId(userId);
         if (profile == null) throw new IllegalStateException("请先完善健康档案");
 
         List<UserRecommendation> history = queryRecentPlans(userId, HISTORY_DAYS);
-        List<UserFeedback> feedbacks = queryRecentFeedback(userId, HISTORY_DAYS);
         boolean isFirstTime = history.isEmpty();
 
+        //TODO 时间需要更细粒度
         // 如果是首次使用 且 当前时间晚于 20:00，不调用AI，直接建议休息
         if (isFirstTime && isLateNight()) {
             return planBuilder.buildRestPlan();
         }
+        List<UserFeedback> feedbacks = queryRecentFeedback(userId, HISTORY_DAYS);
 
         // 2. 核心逻辑链 (Core Logic Pipeline)
         try {
             // Step 1: 分析用户当前状态 (疲劳、心态、趋势)
             UserStatus userStatus = fatigueAnalyzer.analyze(feedbacks);
 
-            // Step 2: 获取医疗建议 (优先使用 DB 缓存) - 【修改点】
-            String medicalAdviceText = profile.getMedicalAdvicePrompt();
+            // Step 2: 获取医疗建议 (优先使用 DB 缓存)
+            //TODO 若无体检数据指标就不需要医疗建议
             HealthConstraints constraints = null;
+            String medicalAdviceText=null;
+            if(!StringUtils.isBlank(profile.getExtractedMedicalData())){
+                medicalAdviceText = profile.getMedicalAdvicePrompt();
 
-            if (StringUtils.isBlank(medicalAdviceText)) {
-                // 缓存为空，执行动态推导 (降级策略)
-                if (StringUtils.isNotBlank(profile.getExtractedMedicalData())) {
-                    constraints = medicalContextBuilder.inferConstraints(
-                            profile.getExtractedMedicalData(), profile.getGender()
-                    );
-                    // 可以在这里选择是否回写数据库缓存，或者等待下次上传文件时更新
-                } else {
-                    // 无体检数据
-                    constraints = new HealthConstraints();
+                if (StringUtils.isBlank(medicalAdviceText)) {
+                    // 缓存为空，执行动态推导 (降级策略)
+                    if (StringUtils.isNotBlank(profile.getExtractedMedicalData())) {
+                        constraints = medicalContextBuilder.inferConstraints(
+                                profile.getExtractedMedicalData(), profile.getGender()
+                        );
+                        // 如果有风险，生成具体文本；如果无风险，存入一个占位符，避免下次重复计算
+                        medicalAdviceText = medicalContextBuilder.generateMedicalAdvicePrompt(profile.getExtractedMedicalData(), profile.getGender());
+                        if ("HEALTHY_NO_ADVICE".equals(medicalAdviceText)) {
+                            medicalAdviceText = "用户体检指标正常，无特殊医学限制。";
+                        }
+                    } else {
+                        // 无体检数据
+                        constraints = new HealthConstraints();
+                    }
                 }
             }
 
@@ -114,6 +124,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             String targetFocus = determineTrainingFocus(userStatus);
 
             // 提取昨日训练内容
+            //TODO 提取逻辑需优化
             String lastTrainingContent = "无（首次训练）";
             if (!history.isEmpty()) {
                 // history.get(0) 是最近的一条（因为SQL是 order by date desc）
@@ -159,25 +170,29 @@ public class RecommendationServiceImpl implements RecommendationService {
      */
     private String parseLastTrainingSummary(UserRecommendation rec) {
         try {
-            // 解析 JSON 数组的第一个方案
-            List<RecommendationPlanVO> plans = objectMapper.readValue(
-                    rec.getPlanJson(),
-                    new TypeReference<List<RecommendationPlanVO>>() {}
-            );
+            String json = rec.getPlanJson();
+            if (StringUtils.isBlank(json)) return "未知";
 
-            if (plans != null && !plans.isEmpty()) {
-                RecommendationPlanVO plan = plans.get(0);
-                String title = plan.getTitle();
-                String focus = "未知";
-                if (plan.getTraining_plan() != null) {
-                    focus = plan.getTraining_plan().getFocus_part();
-                }
-                return String.format("%s (重点部位: %s)", title, focus);
+            // 1. 尝试作为 List 解析
+            if (json.trim().startsWith("[")) {
+                List<RecommendationPlanVO> plans = objectMapper.readValue(json, new TypeReference<>() {});
+                if (!plans.isEmpty()) return formatPlanSummary(plans.get(0));
+            }
+            // 2. 尝试作为 Object 解析
+            else {
+                RecommendationPlanVO plan = objectMapper.readValue(json, RecommendationPlanVO.class);
+                return formatPlanSummary(plan);
             }
         } catch (Exception e) {
-            log.warn("解析历史计划失败", e);
+            log.warn("解析历史计划失败: {}", e.getMessage());
         }
         return "未知";
+    }
+
+    // 提取一个通用格式化方法
+    private String formatPlanSummary(RecommendationPlanVO plan) {
+        String focus = (plan.getTraining_plan() != null) ? plan.getTraining_plan().getFocus_part() : "未知";
+        return String.format("%s (重点: %s)", plan.getTitle(), focus);
     }
 
     /**

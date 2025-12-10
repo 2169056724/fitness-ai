@@ -115,7 +115,7 @@ public class FileParserUtil {
             JSONObject medicalData = extractKeywords(text);
             String medicalJson = medicalData.toJSONString();
 
-            // ================= 【核心修改开始】 =================
+            // ==================================
             // 1. 准备更新对象
             UserProfile profileUpdate = new UserProfile();
             profileUpdate.setUserId(userId);
