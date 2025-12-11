@@ -1,5 +1,6 @@
 package com.lyz.model.dto.ai;
 
+import com.lyz.service.component.NutritionCalculator;
 import lombok.Builder;
 import lombok.Data;
 
@@ -14,6 +15,8 @@ public class UserPromptContext {
     private String basicInfo;        // e.g. "男, 25岁, BMI 24.5"
     private String goal;             // e.g. "减脂"
     private String preferences;      // e.g. "每周5练, 膝盖不好"
+    // === 科学计算的营养指标 ===
+    private NutritionCalculator.NutritionTarget calculatedNutrition;
 
     // === 核心动态状态 (Step 1 & 2 的产物) ===
     private UserStatus userStatus;       // 疲劳度、心态、趋势

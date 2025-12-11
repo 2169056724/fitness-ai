@@ -54,7 +54,18 @@ public class AIController {
     @GetMapping("/plan/today")
     public Result<RecommendationPlanVO> getTodayPlan() {
         Long userId = UserContext.getUserId();
+        // 1. 先查缓存/数据库
         RecommendationPlanVO plan = recommendationService.getTodayPlan(userId);
+
+        // 2. 【核心修改】如果没查到（说明是回归用户，定时任务没给他跑），现场生成
+        if (plan == null) {
+            log.info("用户 {} 暂无今日计划（可能是回归用户），触发实时生成", userId);
+            // 这一步会根据断练时长，自动决定是 AI 生成还是 Java 返回复健操
+            List<RecommendationPlanVO> newPlans = recommendationService.generateDailyPlan(userId, null);
+            if (!newPlans.isEmpty()) {
+                plan = newPlans.get(0);
+            }
+        }
         return Result.success("获取成功", plan);
     }
 

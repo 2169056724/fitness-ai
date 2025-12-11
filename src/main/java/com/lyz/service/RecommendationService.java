@@ -11,7 +11,7 @@ import java.util.List;
 public interface RecommendationService {
 
     /**
-     * 生成当日健身与饮食推荐，返回多套方案（通常为三套：保守/平衡/进阶）
+     * 生成当日健身与饮食推荐
      *
      * @param userId  用户ID
      * @param request 请求参数（活动水平、反馈等，可为空）

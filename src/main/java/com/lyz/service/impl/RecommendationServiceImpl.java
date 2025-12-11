@@ -19,6 +19,7 @@ import com.lyz.service.RecommendationService;
 import com.lyz.service.analysis.FatigueAnalyzer;
 import com.lyz.service.builder.MedicalContextBuilder;
 import com.lyz.service.builder.PlanBuilder;
+import com.lyz.service.component.NutritionCalculator;
 import com.lyz.service.manager.PromptTemplateManager;
 import com.lyz.util.ZhipuAiClient;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -72,6 +74,8 @@ public class RecommendationServiceImpl implements RecommendationService {
     }
 
     private final PlanBuilder planBuilder;
+    private final NutritionCalculator nutritionCalculator;
+
 
     @Override
     public List<RecommendationPlanVO> generateDailyPlan(Long userId, RecommendationRequestDTO request) {
@@ -95,6 +99,9 @@ public class RecommendationServiceImpl implements RecommendationService {
             // Step 1: 分析用户当前状态 (疲劳、心态、趋势)
             UserStatus userStatus = fatigueAnalyzer.analyze(feedbacks);
 
+            // Step 1.5: 营养科学计算 (新增)
+            NutritionCalculator.NutritionTarget nutritionTarget = nutritionCalculator.calculate(profile);
+
             // Step 2: 获取医疗建议 (优先使用 DB 缓存)
             //TODO 若无体检数据指标就不需要医疗建议
             HealthConstraints constraints = null;
@@ -110,13 +117,13 @@ public class RecommendationServiceImpl implements RecommendationService {
                         );
                         // 如果有风险，生成具体文本；如果无风险，存入一个占位符，避免下次重复计算
                         medicalAdviceText = medicalContextBuilder.generateMedicalAdvicePrompt(profile.getExtractedMedicalData(), profile.getGender());
-                        if ("HEALTHY_NO_ADVICE".equals(medicalAdviceText)) {
-                            medicalAdviceText = "用户体检指标正常，无特殊医学限制。";
-                        }
                     } else {
                         // 无体检数据
                         constraints = new HealthConstraints();
                     }
+                }
+                if ("HEALTHY_NO_ADVICE".equals(medicalAdviceText)) {
+                    medicalAdviceText = "用户体检指标正常，无特殊医学限制。";
                 }
             }
 
@@ -135,6 +142,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             UserPromptContext context = UserPromptContext.builder()
                     .basicInfo(formatBasicInfo(profile))
                     .goal(profile.getGoal())
+                    .calculatedNutrition(nutritionTarget)
                     .preferences(formatPreferences(profile))
                     .userStatus(userStatus)
                     .medicalAdviceText(medicalAdviceText)
