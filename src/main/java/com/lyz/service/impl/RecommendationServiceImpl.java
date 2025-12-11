@@ -69,6 +69,7 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate stringRedisTemplate;
+
     private boolean isLateNight() {
         return LocalTime.now().isAfter(LocalTime.of(LATE_NIGHT_HOUR, 0));
     }
@@ -105,8 +106,8 @@ public class RecommendationServiceImpl implements RecommendationService {
             // Step 2: 获取医疗建议 (优先使用 DB 缓存)
             //TODO 若无体检数据指标就不需要医疗建议
             HealthConstraints constraints = null;
-            String medicalAdviceText=null;
-            if(!StringUtils.isBlank(profile.getExtractedMedicalData())){
+            String medicalAdviceText = null;
+            if (!StringUtils.isBlank(profile.getExtractedMedicalData())) {
                 medicalAdviceText = profile.getMedicalAdvicePrompt();
 
                 if (StringUtils.isBlank(medicalAdviceText)) {
@@ -131,26 +132,44 @@ public class RecommendationServiceImpl implements RecommendationService {
             String targetFocus = determineTrainingFocus(userStatus);
 
             // 提取昨日训练内容
-            //TODO 提取逻辑需优化
             String lastTrainingContent = "无（首次训练）";
             if (!history.isEmpty()) {
                 // history.get(0) 是最近的一条（因为SQL是 order by date desc）
                 lastTrainingContent = parseLastTrainingSummary(history.get(0));
             }
 
-            // Step 4: 组装 Prompt 上下文
+            // 4.1 构建精简版 Profile Map
+            Map<String, Object> profileMap = new HashMap<>();
+            profileMap.put("gender", profile.getGender() == 1 ? "Male" : "Female");
+            profileMap.put("age", profile.getAge());
+            profileMap.put("height_cm", profile.getHeightCm());
+            profileMap.put("weight_kg", profile.getWeightKg());
+            profileMap.put("bmi", calculateBmi(profile));
+            profileMap.put("goal", profile.getGoal());
+            profileMap.put("fitness_level", profile.getFitnessLevel());
+            profileMap.put("injuries", profile.getSpecialRestrictions());
+            profileMap.put("available_time_min", profile.getAvailableTimePerDay());
+            profileMap.put("gym_environment", profile.getTrainingLocation());
+
+            // 4.2 构建 Medical Map
+            Map<String, Object> medicalMap = new HashMap<>();
+            medicalMap.put("advice_summary", medicalAdviceText);
+            if (constraints != null) {
+                medicalMap.put("strict_constraints", constraints.getForbiddenCategories());
+                medicalMap.put("risk_warnings", constraints.getRiskWarning());
+            }
+
+            // 4.3 构建 Context 对象
             UserPromptContext context = UserPromptContext.builder()
-                    .basicInfo(formatBasicInfo(profile))
-                    .goal(profile.getGoal())
-                    .calculatedNutrition(nutritionTarget)
-                    .preferences(formatPreferences(profile))
-                    .userStatus(userStatus)
-                    .medicalAdviceText(medicalAdviceText)
-                    .constraints(constraints)
+                    .profile(profileMap)                 // 注入 Map
+                    .nutrition(nutritionTarget)          // 注入 Step 1.5 算出的对象
+                    .currentStatus(userStatus)           // 注入 Step 1 的对象
+                    .medicalInfo(medicalMap)             // 注入 Map
                     .isFirstTime(isFirstTime)
                     .targetFocus(targetFocus)
-                    .lastTrainingContent(lastTrainingContent)
+                    .lastTraining(lastTrainingContent)
                     .build();
+
 
             // Step 5: 渲染 Prompt
             String systemPrompt = promptTemplateManager.buildSystemPrompt();
@@ -183,7 +202,8 @@ public class RecommendationServiceImpl implements RecommendationService {
 
             // 1. 尝试作为 List 解析
             if (json.trim().startsWith("[")) {
-                List<RecommendationPlanVO> plans = objectMapper.readValue(json, new TypeReference<>() {});
+                List<RecommendationPlanVO> plans = objectMapper.readValue(json, new TypeReference<>() {
+                });
                 if (!plans.isEmpty()) return formatPlanSummary(plans.get(0));
             }
             // 2. 尝试作为 Object 解析
@@ -203,8 +223,13 @@ public class RecommendationServiceImpl implements RecommendationService {
         return String.format("%s (重点: %s)", plan.getTitle(), focus);
     }
 
+    private double calculateBmi(UserProfile p) {
+        if (p.getHeightCm() == null || p.getWeightKg() == null) return 0;
+        double h = p.getHeightCm().doubleValue() / 100.0;
+        return p.getWeightKg().doubleValue() / (h * h);
+    }
+
     /**
-     *
      * 只负责“安全风控”
      */
     private String determineTrainingFocus(UserStatus status) {
@@ -250,7 +275,8 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     private List<RecommendationPlanVO> parseAndPersist(Long userId, String rawResponse, UserProfile profile) throws JsonProcessingException {
         String jsonPayload = extractJsonBlock(rawResponse);
-        List<RecommendationPlanVO> plans = objectMapper.readValue(jsonPayload, new TypeReference<>() {});
+        List<RecommendationPlanVO> plans = objectMapper.readValue(jsonPayload, new TypeReference<>() {
+        });
 
         if (plans != null && !plans.isEmpty()) {
             RecommendationPlanVO plan = plans.get(0);
@@ -298,11 +324,17 @@ public class RecommendationServiceImpl implements RecommendationService {
         String cacheKey = CACHE_KEY_PREFIX + userId + ":" + LocalDate.now().format(DateTimeFormatter.ISO_DATE);
         String cached = stringRedisTemplate.opsForValue().get(cacheKey);
         if (StringUtils.isNotBlank(cached)) {
-            try { return objectMapper.readValue(cached, RecommendationPlanVO.class); } catch (Exception ignored) {}
+            try {
+                return objectMapper.readValue(cached, RecommendationPlanVO.class);
+            } catch (Exception ignored) {
+            }
         }
         UserRecommendation rec = userRecommendationMapper.getByUserIdAndDate(userId, LocalDate.now());
         if (rec != null) {
-            try { return objectMapper.readValue(rec.getPlanJson(), RecommendationPlanVO.class); } catch (Exception ignored) {}
+            try {
+                return objectMapper.readValue(rec.getPlanJson(), RecommendationPlanVO.class);
+            } catch (Exception ignored) {
+            }
         }
         return null;
     }

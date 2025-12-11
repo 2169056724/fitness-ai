@@ -4,6 +4,8 @@ import com.lyz.service.component.NutritionCalculator;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.Map;
+
 /**
  * Prompt 上下文容器
  * 包含生成 Prompt 所需的所有原料，实现"数据准备"与"文本拼接"分离
@@ -11,20 +13,25 @@ import lombok.Data;
 @Data
 @Builder
 public class UserPromptContext {
-    // === 基础画像 ===
-    private String basicInfo;        // e.g. "男, 25岁, BMI 24.5"
-    private String goal;             // e.g. "减脂"
-    private String preferences;      // e.g. "每周5练, 膝盖不好"
-    // === 科学计算的营养指标 ===
-    private NutritionCalculator.NutritionTarget calculatedNutrition;
+// === 核心数据区 (JSON Root Keys) ===
 
-    // === 核心动态状态 (Step 1 & 2 的产物) ===
-    private UserStatus userStatus;       // 疲劳度、心态、趋势
-    private HealthConstraints constraints; // 饮食禁忌、红线
-    private String medicalAdviceText; // 新增：数据库缓存的医疗建议字符串
+    // 1. 用户画像 (Map: 包含 age, gender, bmi, goal, activityLevel 等)
+    // 替代了原来的 basicInfo, goal, preferences 字符串
+    private Map<String, Object> profile;
 
-    // === 场景控制 ===
-    private boolean isFirstTime;     // 是否首次
-    private String targetFocus;      // 仅当有强制干预（如受伤/休息）时才有值，否则为 null
-    private String lastTrainingContent; // 昨天练了什么（例如 "胸部力量训练"）
+    // 2. 科学营养指标 (直接使用计算好的对象)
+    private NutritionCalculator.NutritionTarget nutrition;
+
+    // 3. 身体状态 (UserStatus 对象)
+    private UserStatus currentStatus;
+
+    // 4. 医学约束 (Map 或 对象)
+    private Map<String, Object> medicalInfo;
+
+    // 5. 训练上下文 (上一练)
+    private String lastTraining;
+
+    // === 场景控制 (不进入 JSON，仅用于 Java 逻辑判断) ===
+    private boolean isFirstTime;
+    private String targetFocus;
 }
