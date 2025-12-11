@@ -147,9 +147,20 @@ public class RecommendationServiceImpl implements RecommendationService {
             profileMap.put("bmi", calculateBmi(profile));
             profileMap.put("goal", profile.getGoal());
             profileMap.put("fitness_level", profile.getFitnessLevel());
-            profileMap.put("injuries", profile.getSpecialRestrictions());
             profileMap.put("available_time_min", profile.getAvailableTimePerDay());
             profileMap.put("gym_environment", profile.getTrainingLocation());
+            //  训练频率
+            profileMap.put("weekly_training_days", profile.getTrainingFrequency());
+            // 2. 偏好：决定 AI 的个性化推荐 (如：不做波比跳)
+            if (StringUtils.isNotBlank(profile.getSpecialRestrictions())) {
+                profileMap.put("user_preferences", profile.getSpecialRestrictions());
+            }
+            if (StringUtils.isNotBlank(profile.getMedicalHistory())) {
+                profileMap.put("injuries_history", profile.getMedicalHistory());
+            }
+            if (profile.getTargetWeightKg() != null) {
+                profileMap.put("target_weight_kg", profile.getTargetWeightKg());
+            }
 
             // 4.2 构建 Medical Map
             Map<String, Object> medicalMap = new HashMap<>();
