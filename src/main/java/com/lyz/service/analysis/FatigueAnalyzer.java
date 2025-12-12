@@ -1,6 +1,6 @@
 package com.lyz.service.analysis;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lyz.model.dto.ai.UserStatus;
 import com.lyz.model.entity.UserFeedback;
@@ -9,12 +9,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.math.BigDecimal;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
- * 状态分析器：负责分析历史反馈，生成用户状态快照
+ * 智能状态分析器 (Pro版)
+ * 融合了 ACWR (短期:长期负荷比) 模型与语义归因分析
  */
 @Slf4j
 @Component
@@ -23,118 +24,205 @@ public class FatigueAnalyzer {
 
     private final ObjectMapper objectMapper;
 
+    // 预设标准训练时长 (分钟)，用于负荷计算，实际项目中可从 UserProfile 获取
+    private static final int BASE_DURATION_MIN = 45;
+
     /**
-     * 分析用户最近的状态
-     * @param recentFeedbacks 最近7天的反馈记录（按日期正序排列）
-     * @return 结构化的用户状态对象
+     * 主分析入口
      */
-    public UserStatus analyze(List<UserFeedback> recentFeedbacks) {
+    public UserStatus analyze(List<UserFeedback> history) {
+        // 1. 初始化状态
         UserStatus status = new UserStatus();
-
-        // 默认初始化
+        status.setStrategy(UserStatus.Strategy.SUSTAIN); // 默认维持
         status.setFatigueLevel("NONE");
-        status.setIntensityAdjustment(1.0);
-        status.setNeedRestDay(false);
-        status.setRecentTrend("表现平稳");
 
-        if (recentFeedbacks == null || recentFeedbacks.isEmpty()) {
-            status.setRecentTrend("暂无近期反馈数据，按标准流程进行");
+        if (history == null || history.isEmpty()) {
+            status.setAiInstruction("新用户或无历史数据，请根据用户档案生成标准的适应性训练计划。");
             return status;
         }
-        // 数据库查出来是 DESC (新->旧)，我们反转成 ASC (旧->新) 以符合分析逻辑
-        Collections.reverse(recentFeedbacks);
 
-        analyzeTrends(recentFeedbacks, status);
-        analyzeEmotionAndBodyParts(recentFeedbacks, status);
+        // 2. 数据预处理 (按时间倒序：Index 0 为最新)
+        // 确保 List 是可变的且已排序
+        List<UserFeedback> sortedHistory = new ArrayList<>(history);
+        sortedHistory.sort((a, b) -> b.getFeedbackDate().compareTo(a.getFeedbackDate()));
 
-        // 提取最近一条有内容的备注
-        for (int i = recentFeedbacks.size() - 1; i >= 0; i--) {
-            String note = recentFeedbacks.get(i).getNotes();
-            if (StringUtils.isNotBlank(note)) {
-                status.setLatestNote(note);
-                break;
-            }
-        }
+        UserFeedback latest = sortedHistory.get(0);
+        AnalysisContext context = buildContext(latest, sortedHistory);
+
+        // 3. 提取用户最新备注
+        status.setLatestNote(latest.getNotes());
+
+        // 4. 执行分析链 (优先级：伤痛 > 过度训练 > 顺应性 > 进阶)
+
+        // Step A: 伤痛熔断检测 (Safety Breaker)
+        if (checkInjury(context, status)) return status;
+
+        // Step B: ACWR 负荷趋势检测 (Trend Analysis)
+        if (checkWorkloadTrend(context, status)) return status;
+
+        // Step C: 当日状态归因 (Attribution Analysis)
+        checkDailyCondition(context, status);
 
         return status;
     }
 
-    private void analyzeTrends(List<UserFeedback> feedbacks, UserStatus status) {
-        // 计算平均完成率
-        double avgRate = feedbacks.stream()
-                .filter(f -> f.getCompletionRate() != null)
-                .mapToDouble(f -> f.getCompletionRate().doubleValue())
-                .average().orElse(0.0);
+    // ================== 核心检测逻辑 ==================
 
-        if (avgRate < 60) {
-            status.setRecentTrend("近期完成率较低(" + (int)avgRate + "%)，可能强度过大");
-            status.setIntensityAdjustment(0.8); // 降级
-        } else if (avgRate > 95) {
-            status.setRecentTrend("近期完成率极高，状态火热");
-            status.setIntensityAdjustment(1.1); // 升级
-        }
+    /**
+     * 检测伤痛与高危部位
+     */
+    private boolean checkInjury(AnalysisContext ctx, UserStatus status) {
+        List<String> riskParts = ctx.tags.stream()
+                .filter(TagDictionary::isRiskTag)
+                .map(TagDictionary::mapToBodyPart)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
 
-        // 检查连续低分
-        long lowRatingCount = feedbacks.stream()
-                .filter(f -> f.getRating() != null && f.getRating() <= 2)
-                .count();
-        if (lowRatingCount >= 2) {
-            status.setFatigueLevel("MILD");
-            status.setRecentTrend("连续多次评分较低，建议关注恢复");
-        }
-    }
-
-    //TODO 3天还未包含昨天，且顺序是倒序
-    private void analyzeEmotionAndBodyParts(List<UserFeedback> feedbacks, UserStatus status) {
-        // 只分析最近 3 天的反馈来决定当天的疲劳部位
-        int checkSize = Math.min(feedbacks.size(), 3);
-        List<UserFeedback> latestFeedbacks = feedbacks.subList(feedbacks.size() - checkSize, feedbacks.size());
-
-        List<String> detectedParts = new ArrayList<>();
-        int fatigueCount = 0;
-
-        for (UserFeedback fb : latestFeedbacks) {
-            List<String> tags = parseEmotionTags(fb.getEmotionTags());
-            for (String tag : tags) {
-                // 扩充关键词，防止漏网之鱼
-                if (tag.contains("腿") || tag.contains("下肢") || tag.contains("蹲") || tag.contains("臀")) detectedParts.add("下肢"); // 加个臀
-                if (tag.contains("胸") || tag.contains("推") || tag.contains("卧推")) detectedParts.add("胸部");
-                if (tag.contains("背") || tag.contains("拉") || tag.contains("划船")) detectedParts.add("背部");
-                if (tag.contains("肩") || tag.contains("举")) detectedParts.add("肩部"); // 加个举（推举）
-
-                // 扩充疲劳词
-                if (tag.contains("累") || tag.contains("疲") || tag.contains("酸") || tag.contains("痛") || tag.contains("炸") || tag.contains("废")) {
-                    fatigueCount++;
-                }
-            }
-        }
-
-        if (!detectedParts.isEmpty()) {
-            status.setFatiguedBodyParts(detectedParts.stream().distinct().toList());
-        }
-
-        if (fatigueCount >= 2) {
+        if (!riskParts.isEmpty()) {
+            status.setStrategy(UserStatus.Strategy.AVOIDANCE);
             status.setFatigueLevel("SEVERE");
-            status.setNeedRestDay(true);
-            status.setIntensityAdjustment(0.6); // 显著降级
-            status.setMoodSummary("检测到明显的身体疲劳信号");
+            status.setRiskBodyParts(riskParts);
+
+            String partStr = String.join("、", riskParts);
+            status.setAiInstruction(String.format(
+                    "【最高优先级】用户报告%s出现疼痛/不适。今日严禁安排涉及%s的动作。建议切换到互补肌群训练（如上肢伤练下肢）或安排低强度康复训练。",
+                    partStr, partStr
+            ));
+            status.setUserMessage("已收到您的" + partStr + "不适反馈，今天我们将避开这些部位，进行安全训练。");
+            return true; // 阻断后续分析
         }
+        return false;
     }
 
-    private List<String> parseEmotionTags(String json) {
-        List<String> list = new ArrayList<>();
-        if (StringUtils.isBlank(json)) return list;
-        try {
-            JsonNode node = objectMapper.readTree(json);
-            if (node.isArray()) {
-                node.forEach(n -> list.add(n.asText()));
-            } else {
-                list.add(node.asText());
-            }
-        } catch (Exception e) {
-            // 简单容错
-            list.add(json);
+    /**
+     * 基于 ACWR (Acute:Chronic Workload Ratio) 的趋势分析
+     * 科学计算：如果短期负荷远超长期负荷，说明有受伤风险
+     */
+    private boolean checkWorkloadTrend(AnalysisContext ctx, UserStatus status) {
+        // 至少需要3天数据才能计算趋势
+        if (ctx.history.size() < 3) return false;
+
+        double acuteLoad = calculateAverageLoad(ctx.history, 3); // 短期(3天)
+        double chronicLoad = calculateAverageLoad(ctx.history, 7); // 长期(7天)
+
+        if (chronicLoad == 0) return false;
+
+        double acwr = acuteLoad / chronicLoad;
+
+        // 运动科学阈值：ACWR > 1.5 为高伤病风险区
+        if (acwr > 1.3) {
+            status.setStrategy(UserStatus.Strategy.RECOVERY);
+            status.setFatigueLevel("MILD");
+            status.setAiInstruction(String.format(
+                    "【趋势预警】检测到用户短期训练负荷激增 (ACWR=%.1f)。为防止过度训练，今日必须强制安排“减载日(Deload)”，将训练容量降低40%%，侧重柔韧性与恢复。", acwr
+            ));
+            status.setUserMessage("最近练得很猛哦！为了防止过度疲劳，今天我们适当降低一点强度，确保持续进步。");
+            return true;
         }
-        return list;
+
+        // ACWR < 0.8 说明训练不足
+        if (acwr < 0.8 && ctx.latestRpe < 3) {
+            status.setStrategy(UserStatus.Strategy.PROGRESS);
+            status.setAiInstruction("【趋势提示】用户近期训练负荷偏低，处于去适应化(Detraining)边缘。请适当增加今日训练强度，引入渐进式超负荷。");
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 当日状态归因 (基于 RPE 与 完成率)
+     */
+    private void checkDailyCondition(AnalysisContext ctx, UserStatus status) {
+        boolean isBusy = ctx.tags.stream().anyMatch(TagDictionary::isBusyTag);
+
+        // 1. 顺应性问题 (没时间/不想练)
+        if (isBusy || (ctx.latestRpe <= 3 && ctx.completionRate < 0.6)) {
+            status.setStrategy(UserStatus.Strategy.EFFICIENCY);
+            status.setAiInstruction("用户反馈时间碎片化或依从性下降。请生成“短时高效”方案，采用HIIT或超级组模式，总时长严格控制在25分钟内。");
+            status.setUserMessage("明白您时间紧张，今天我们速战速决！");
+            return;
+        }
+
+        // 2. 强度过大 (练不动)
+        if (ctx.latestRpe >= 4 && ctx.completionRate < 0.8) {
+            status.setStrategy(UserStatus.Strategy.RECOVERY);
+            status.setAiInstruction("用户昨日感到力竭且未能完成计划。请降低单组次数或减少总组数，提供更容易坚持的方案。");
+            status.setUserMessage("昨天辛苦了，今天我们稍微调低一点难度，让身体回回血。");
+            return;
+        }
+
+        // 3. 强度适中/不足 (默认进阶)
+        if (ctx.latestRpe <= 2 && ctx.completionRate > 0.9) {
+            status.setStrategy(UserStatus.Strategy.PROGRESS);
+            status.setAiInstruction("用户反馈训练过于轻松。请在核心动作上增加重量或尝试进阶变式。");
+            status.setUserMessage("状态神勇！今天给您加点挑战。");
+            return;
+        }
+
+        // 4. 默认维持
+        status.setAiInstruction("用户状态平稳。请保持当前训练节奏，可微调动作顺序以保持新鲜感。");
+    }
+
+    // ================== 辅助计算与类 ==================
+
+    /**
+     * 计算平均训练负荷 (Internal Load = RPE * CompletionRate * BaseDuration)
+     */
+    private double calculateAverageLoad(List<UserFeedback> history, int days) {
+        return history.stream()
+                .limit(days)
+                .mapToDouble(f -> {
+                    int rpe = f.getRating() != null ? f.getRating() : 3;
+                    double completion = f.getCompletionRate() != null ? f.getCompletionRate().doubleValue() / 100.0 : 0.0;
+                    // 假设标准时长 45分钟，用完成率折算实际时长
+                    return rpe * (BASE_DURATION_MIN * completion);
+                })
+                .average()
+                .orElse(0.0);
+    }
+
+    private AnalysisContext buildContext(UserFeedback latest, List<UserFeedback> history) {
+        List<String> tags = Collections.emptyList();
+        try {
+            if (StringUtils.isNotBlank(latest.getEmotionTags())) {
+                tags = objectMapper.readValue(latest.getEmotionTags(), new TypeReference<List<String>>() {});
+            }
+        } catch (Exception ignored) {}
+
+        double rate = latest.getCompletionRate() != null ? latest.getCompletionRate().doubleValue() / 100.0 : 0.0;
+        int rpe = latest.getRating() != null ? latest.getRating() : 3;
+
+        return new AnalysisContext(latest, history, tags, rate, rpe);
+    }
+
+    // 内部上下文对象，传递数据
+    private record AnalysisContext(
+            UserFeedback latest,
+            List<UserFeedback> history,
+            List<String> tags,
+            double completionRate,
+            int latestRpe
+    ) {}
+
+    // 标签字典 (静态内部类，也可以抽出去)
+    private static class TagDictionary {
+        static boolean isRiskTag(String tag) {
+            return tag.contains("痛") || tag.contains("伤") || tag.contains("晕") || tag.contains("不适");
+        }
+
+        static boolean isBusyTag(String tag) {
+            return tag.contains("没时间") || tag.contains("忙") || tag.contains("加班");
+        }
+
+        static String mapToBodyPart(String tag) {
+            if (tag.contains("膝")) return "膝盖";
+            if (tag.contains("腰") || tag.contains("背")) return "下背部";
+            if (tag.contains("肩")) return "肩部";
+            if (tag.contains("腕")) return "手腕";
+            if (tag.contains("踝") || tag.contains("脚")) return "踝关节";
+            return null;
+        }
     }
 }

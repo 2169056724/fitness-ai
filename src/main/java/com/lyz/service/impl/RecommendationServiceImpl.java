@@ -86,6 +86,7 @@ public class RecommendationServiceImpl implements RecommendationService {
         if (profile == null) throw new IllegalStateException("请先完善健康档案");
 
         List<UserRecommendation> history = queryRecentPlans(userId, HISTORY_DAYS);
+
         boolean isFirstTime = history.isEmpty();
 
         //TODO 时间需要更细粒度
@@ -93,11 +94,13 @@ public class RecommendationServiceImpl implements RecommendationService {
         if (isFirstTime && isLateNight()) {
             return planBuilder.buildRestPlan();
         }
-        List<UserFeedback> feedbacks = queryRecentFeedback(userId, HISTORY_DAYS);
-
         // 2. 核心逻辑链 (Core Logic Pipeline)
         try {
             // Step 1: 分析用户当前状态 (疲劳、心态、趋势)
+            List<UserFeedback> feedbacks = queryRecentFeedback(userId, HISTORY_DAYS);
+            // 确保 feedbacks 是按日期倒序 (最近的在前)
+            feedbacks.sort((a, b) -> b.getFeedbackDate().compareTo(a.getFeedbackDate()));
+
             UserStatus userStatus = fatigueAnalyzer.analyze(feedbacks);
 
             // Step 1.5: 营养科学计算 (新增)
@@ -127,9 +130,6 @@ public class RecommendationServiceImpl implements RecommendationService {
                     medicalAdviceText = "用户体检指标正常，无特殊医学限制。";
                 }
             }
-
-            // Step 3: 只返回"强制干预指令"，常规情况返回 null
-            String targetFocus = determineTrainingFocus(userStatus);
 
             // 提取昨日训练内容
             String lastTrainingContent = "无（首次训练）";
@@ -177,8 +177,6 @@ public class RecommendationServiceImpl implements RecommendationService {
                     .currentStatus(userStatus)           // 注入 Step 1 的对象
                     .medicalInfo(medicalMap)             // 注入 Map
                     .isFirstTime(isFirstTime)
-                    .targetFocus(targetFocus)
-                    .lastTraining(lastTrainingContent)
                     .build();
 
 
@@ -186,7 +184,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             String systemPrompt = promptTemplateManager.buildSystemPrompt();
             String userPrompt = promptTemplateManager.buildUserPrompt(context);
 
-            log.info("AI Prompt生成完毕，UserId={}, 重点={}, 疲劳度={}", userId, targetFocus, userStatus.getFatigueLevel());
+            log.info("AI Prompt生成完毕，UserId={},  疲劳度={}", userId, userStatus.getFatigueLevel());
 
             // 3. 调用 AI (AI Invocation)
             String rawResponse = zhipuAiClient.chat(systemPrompt, userPrompt, DEFAULT_MODEL, DEFAULT_TEMPERATURE, DEFAULT_TOP_P);
@@ -240,49 +238,6 @@ public class RecommendationServiceImpl implements RecommendationService {
         return p.getWeightKg().doubleValue() / (h * h);
     }
 
-    /**
-     * 只负责“安全风控”
-     */
-    private String determineTrainingFocus(UserStatus status) {
-        // 1. 优先处理疲劳部位避让 (强制指令)
-        if (!status.getFatiguedBodyParts().isEmpty()) {
-            String avoid = String.join("、", status.getFatiguedBodyParts());
-            return "严格避开部位：" + avoid; // 这种指令 AI 必须听
-        }
-
-        // 2. 强制休息 (强制指令)
-        if (status.isNeedRestDay()) {
-            return "主动恢复 (瑜伽/拉伸/冥想)";
-        }
-
-        // 3. 常规情况：返回 null，表示"无强制要求，请 AI 自由发挥"
-        // 之前的 "return '全身综合训练'" 删掉
-        return null;
-    }
-
-    private String formatBasicInfo(UserProfile p) {
-        // 简单计算 BMI/BMR 用于展示
-        double bmi = 0.0;
-        if (p.getHeightCm() != null && p.getWeightKg() != null) {
-            double h = p.getHeightCm().doubleValue() / 100.0;
-            bmi = p.getWeightKg().doubleValue() / (h * h);
-        }
-        return String.format("%s, %d岁, %.1fcm, %.1fkg, BMI:%.1f, 活动量:%s",
-                p.getGender() == 1 ? "男" : "女",
-                p.getAge(),
-                p.getHeightCm(),
-                p.getWeightKg(),
-                bmi,
-                StringUtils.defaultString(p.getActivityLevel(), "中等"));
-    }
-
-    private String formatPreferences(UserProfile p) {
-        List<String> prefs = new ArrayList<>();
-        if (p.getAvailableTimePerDay() != null) prefs.add("时长:" + p.getAvailableTimePerDay() + "分钟");
-        if (StringUtils.isNotBlank(p.getTrainingLocation())) prefs.add("场景:" + p.getTrainingLocation());
-        if (StringUtils.isNotBlank(p.getSpecialRestrictions())) prefs.add("伤痛/禁忌:" + p.getSpecialRestrictions());
-        return String.join("; ", prefs);
-    }
 
     private List<RecommendationPlanVO> parseAndPersist(Long userId, String rawResponse, UserProfile profile) throws JsonProcessingException {
         String jsonPayload = extractJsonBlock(rawResponse);

@@ -5,42 +5,34 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 用户当前身体与训练状态快照
- * (Step 1 Output)
+ * 用户状态快照 (重构版)
  */
 @Data
 public class UserStatus {
-    /**
-     * 疲劳等级 (NONE/MILD/SEVERE)
-     */
-    private String fatigueLevel;
 
-    /**
-     * 需要避开的疲劳部位（如：下肢、胸部）
-     */
-    private List<String> fatiguedBodyParts = new ArrayList<>();
+    // 策略枚举：REST(休息), RECOVERY(主动恢复/降阶), SUSTAIN(维持), PROGRESS(进阶), EFFICIENCY(提效)
+    public enum Strategy {
+        REST,           // 强制休息
+        AVOIDANCE,      // 避让伤痛
+        RECOVERY,       // 降级/恢复
+        SUSTAIN,        // 维持当前
+        PROGRESS,       // 进阶
+        EFFICIENCY      // 提高效率(缩短时间)
+    }
 
-    /**
-     * 最近表现趋势 (e.g., "连续3天完成率低于60%", "状态火热")
-     */
-    private String recentTrend;
+    private Strategy strategy;
+    private String fatigueLevel; // NONE, MILD, SEVERE
 
-    /**
-     * 建议训练强度调整系数 (e.g., 0.8 表示降阶, 1.2 表示进阶)
-     */
-    private Double intensityAdjustment;
+    // 需要生成的 Prompt 指令 (直接给 AI 看的)
+    private String aiInstruction;
 
-    /**
-     * 心态/情绪摘要
-     */
-    private String moodSummary;
+    // 具体的避让部位
+    private List<String> riskBodyParts = new ArrayList<>();
 
-    /**
-     * 是否需要恢复日
-     */
-    private boolean needRestDay;
-    /**
-     * 用户最近的文字反馈
-     */
+    // 给前端展示的分析文案 (如：检测到膝盖不适，已为您调整为上肢训练)
+    private String userMessage;
+
     private String latestNote;
+    // 在 UserStatus 中增加
+    private Double acwrValue; // 给前端画图用，展示用户的疲劳趋势
 }
