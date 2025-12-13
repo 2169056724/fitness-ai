@@ -4,6 +4,7 @@ import com.lyz.service.component.NutritionCalculator;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,8 +29,8 @@ public class UserPromptContext {
     // 4. 医学约束 (Map 或 对象)
     private Map<String, Object> medicalInfo;
 
-    // 5. 训练上下文 (上一练)
-    private String lastTraining;
+    // 5. 训练上下文
+    private List<String> recentHistory;
 
     // === 场景控制 (不进入 JSON，仅用于 Java 逻辑判断) ===
     private boolean isFirstTime;

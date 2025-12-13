@@ -131,11 +131,20 @@ public class RecommendationServiceImpl implements RecommendationService {
                 }
             }
 
-            // 提取昨日训练内容
-            String lastTrainingContent = "无（首次训练）";
-            if (!history.isEmpty()) {
-                // history.get(0) 是最近的一条（因为SQL是 order by date desc）
-                lastTrainingContent = parseLastTrainingSummary(history.get(0));
+            // 🚀 优化后的代码：提取最近 3 天的训练摘要
+            List<String> recentHistory = new ArrayList<>();
+            // history 已经是按日期倒序排列的
+            int lookBackDays = Math.min(history.size(), 3);
+
+            for (int i = 0; i < lookBackDays; i++) {
+                UserRecommendation record = history.get(i);
+                String summary = parseTrainingSummary(record); // 下面会优化这个解析方法
+                // 格式： "2023-12-10: 胸部力量训练 (重点: 胸大肌)"
+                recentHistory.add(record.getDate() + ": " + summary);
+            }
+            // 如果是空（新用户），填一个默认值
+            if (recentHistory.isEmpty()) {
+                recentHistory.add("无（新用户首次训练）");
             }
 
             // 4.1 构建精简版 Profile Map
@@ -178,7 +187,7 @@ public class RecommendationServiceImpl implements RecommendationService {
                     .medicalInfo(medicalMap)             // 注入 Map
                     .explicitInstruction(userStatus.getAiInstruction())
                     .isFirstTime(isFirstTime)
-                    .lastTraining(lastTrainingContent)
+                    .recentHistory(recentHistory)
                     .build();
 
 
@@ -203,35 +212,24 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     // ================= 核心辅助逻辑 =================
 
-    /**
-     * 解析昨天的计划，提取关键信息
-     */
-    private String parseLastTrainingSummary(UserRecommendation rec) {
+    private String parseTrainingSummary(UserRecommendation rec) {
         try {
-            String json = rec.getPlanJson();
-            if (StringUtils.isBlank(json)) return "未知";
+            // 解析 JSON
+            RecommendationPlanVO plan = objectMapper.readValue(rec.getPlanJson(), RecommendationPlanVO.class);
+            // 如果是 List 结构，取第一个
+            // ... (保留你之前的兼容 List 的逻辑) ...
 
-            // 1. 尝试作为 List 解析
-            if (json.trim().startsWith("[")) {
-                List<RecommendationPlanVO> plans = objectMapper.readValue(json, new TypeReference<>() {
-                });
-                if (!plans.isEmpty()) return formatPlanSummary(plans.get(0));
+            // 核心：提取结构化字段，而不是依赖标题
+            String title = plan.getTitle();
+            String focus = "全身";
+            if (plan.getTraining_plan() != null && StringUtils.isNotBlank(plan.getTraining_plan().getFocus_part())) {
+                focus = plan.getTraining_plan().getFocus_part();
             }
-            // 2. 尝试作为 Object 解析
-            else {
-                RecommendationPlanVO plan = objectMapper.readValue(json, RecommendationPlanVO.class);
-                return formatPlanSummary(plan);
-            }
+
+            return String.format("%s (重点: %s)", title, focus);
         } catch (Exception e) {
-            log.warn("解析历史计划失败: {}", e.getMessage());
+            return "未知训练";
         }
-        return "未知";
-    }
-
-    // 提取一个通用格式化方法
-    private String formatPlanSummary(RecommendationPlanVO plan) {
-        String focus = (plan.getTraining_plan() != null) ? plan.getTraining_plan().getFocus_part() : "未知";
-        return String.format("%s (重点: %s)", plan.getTitle(), focus);
     }
 
     private double calculateBmi(UserProfile p) {
