@@ -101,7 +101,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             // 确保 feedbacks 是按日期倒序 (最近的在前)
             feedbacks.sort((a, b) -> b.getFeedbackDate().compareTo(a.getFeedbackDate()));
 
-            UserStatus userStatus = fatigueAnalyzer.analyze(feedbacks);
+            UserStatus userStatus = fatigueAnalyzer.analyze(feedbacks, profile);
 
             // Step 1.5: 营养科学计算 (新增)
             NutritionCalculator.NutritionTarget nutritionTarget = nutritionCalculator.calculate(profile);

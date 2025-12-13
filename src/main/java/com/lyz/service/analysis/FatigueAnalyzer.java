@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lyz.model.dto.ai.UserStatus;
 import com.lyz.model.entity.UserFeedback;
+import com.lyz.model.entity.UserProfile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -24,13 +25,14 @@ public class FatigueAnalyzer {
 
     private final ObjectMapper objectMapper;
 
-    // 预设标准训练时长 (分钟)，用于负荷计算，实际项目中可从 UserProfile 获取
+
+    // 预设标准训练时长 (分钟)，用于负荷计算
     private static final int BASE_DURATION_MIN = 45;
 
     /**
      * 主分析入口
      */
-    public UserStatus analyze(List<UserFeedback> history) {
+    public UserStatus analyze(List<UserFeedback> history, UserProfile profile) {
         // 1. 初始化状态
         UserStatus status = new UserStatus();
         status.setStrategy(UserStatus.Strategy.SUSTAIN); // 默认维持
@@ -47,7 +49,7 @@ public class FatigueAnalyzer {
         sortedHistory.sort((a, b) -> b.getFeedbackDate().compareTo(a.getFeedbackDate()));
 
         UserFeedback latest = sortedHistory.get(0);
-        AnalysisContext context = buildContext(latest, sortedHistory);
+        AnalysisContext context = buildContext(latest, sortedHistory,profile);
 
         // 3. 提取用户最新备注
         status.setLatestNote(latest.getNotes());
@@ -103,8 +105,8 @@ public class FatigueAnalyzer {
         // 至少需要3天数据才能计算趋势
         if (ctx.history.size() < 3) return false;
 
-        double acuteLoad = calculateAverageLoad(ctx.history, 3); // 短期(3天)
-        double chronicLoad = calculateAverageLoad(ctx.history, 7); // 长期(7天)
+        double acuteLoad = calculateAverageLoad(ctx.history, 3,ctx.baseDuration); // 短期(3天)
+        double chronicLoad = calculateAverageLoad(ctx.history, 7,ctx.baseDuration); // 长期(7天)
 
         if (chronicLoad == 0) return false;
 
@@ -170,20 +172,20 @@ public class FatigueAnalyzer {
     /**
      * 计算平均训练负荷 (Internal Load = RPE * CompletionRate * BaseDuration)
      */
-    private double calculateAverageLoad(List<UserFeedback> history, int days) {
+    private double calculateAverageLoad(List<UserFeedback> history, int days, int duration) {
         return history.stream()
                 .limit(days)
                 .mapToDouble(f -> {
                     int rpe = f.getRating() != null ? f.getRating() : 3;
                     double completion = f.getCompletionRate() != null ? f.getCompletionRate().doubleValue() / 100.0 : 0.0;
-                    // 假设标准时长 45分钟，用完成率折算实际时长
-                    return rpe * (BASE_DURATION_MIN * completion);
+                    // 使用传入的个性化时长
+                    return rpe * (duration * completion);
                 })
                 .average()
                 .orElse(0.0);
     }
 
-    private AnalysisContext buildContext(UserFeedback latest, List<UserFeedback> history) {
+    private AnalysisContext buildContext(UserFeedback latest, List<UserFeedback> history, UserProfile profile) {
         List<String> tags = Collections.emptyList();
         try {
             if (StringUtils.isNotBlank(latest.getEmotionTags())) {
@@ -194,7 +196,12 @@ public class FatigueAnalyzer {
         double rate = latest.getCompletionRate() != null ? latest.getCompletionRate().doubleValue() / 100.0 : 0.0;
         int rpe = latest.getRating() != null ? latest.getRating() : 3;
 
-        return new AnalysisContext(latest, history, tags, rate, rpe);
+        // 获取用户设置的时长，如果为空则用默认值 45
+        int userDuration = (profile != null && profile.getAvailableTimePerDay() != null)
+                ? profile.getAvailableTimePerDay()
+                : BASE_DURATION_MIN;
+
+        return new AnalysisContext(latest, history, tags, rate, rpe, userDuration);
     }
 
     // 内部上下文对象，传递数据
@@ -203,7 +210,8 @@ public class FatigueAnalyzer {
             List<UserFeedback> history,
             List<String> tags,
             double completionRate,
-            int latestRpe
+            int latestRpe,
+            int baseDuration // 新增字段
     ) {}
 
     // 标签字典 (静态内部类，也可以抽出去)
