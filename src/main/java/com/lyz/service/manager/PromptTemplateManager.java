@@ -35,11 +35,15 @@ public class PromptTemplateManager {
             2. "nutrition": 系统经严谨计算的每日营养目标（热量、三大项）。
             3. "currentStatus": 今日身心状态（疲劳度、反馈）。
             4. "medicalInfo": 医学禁忌与建议。
+            5. "explicit_instruction": 系统生成的强制调整指令（优先级最高）。
             
             【核心原则】
             1. 饮食：必须严格执行 "nutrition" 字段中的数值（误差 ±10%），切勿自行重新估算 BMR。
             2. 训练：根据 "currentStatus" 和 "profile" 生成今日计划。若疲劳度高，必须降阶。
             3. 禁忌：严格遵守 "medicalInfo" 中的 strict_constraints。
+            4. 指令：若 "explicit_instruction" 字段不为空，必须无条件优先满足该指令的要求（即使与 profile 冲突）。
+            
+           
             
             【输出格式】
             请仅输出标准 JSON 数组（Array），不要包含 Markdown 标记：
@@ -67,7 +71,6 @@ public class PromptTemplateManager {
     public String buildUserPrompt(UserPromptContext ctx) {
         try {
             // 构造最终发送给 AI 的 JSON 结构
-            // 我们可以在这里做一个扁平化处理，或者直接序列化 ctx 的某些字段
             Map<String, Object> root = new HashMap<>();
 
             // 1. Profile
@@ -82,13 +85,15 @@ public class PromptTemplateManager {
             // 4. Medical
             root.put("medicalInfo", ctx.getMedicalInfo());
 
-            // 5. Context
+            // 5. Explicit Instruction (新增核心逻辑)
+            // 将分析层生成的自然语言指令注入 Prompt
+            if (StringUtils.isNotBlank(ctx.getExplicitInstruction())) {
+                root.put("explicit_instruction", ctx.getExplicitInstruction());
+            }
+
+            // 6. Context
             Map<String, Object> contextInfo = new HashMap<>();
             contextInfo.put("is_first_time", ctx.isFirstTime());
-            contextInfo.put("last_training", ctx.getLastTraining());
-            if (ctx.getTargetFocus() != null) {
-                contextInfo.put("system_force_focus", ctx.getTargetFocus());
-            }
             root.put("context", contextInfo);
 
             // 序列化为 JSON 字符串

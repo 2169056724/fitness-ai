@@ -28,6 +28,9 @@ public class UserPromptContext {
     // 4. 医学约束 (Map 或 对象)
     private Map<String, Object> medicalInfo;
 
+    // 5. 训练上下文 (上一练)
+    private String lastTraining;
+
     // === 场景控制 (不进入 JSON，仅用于 Java 逻辑判断) ===
     private boolean isFirstTime;
 

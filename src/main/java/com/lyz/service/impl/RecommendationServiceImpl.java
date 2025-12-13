@@ -176,7 +176,9 @@ public class RecommendationServiceImpl implements RecommendationService {
                     .nutrition(nutritionTarget)          // 注入 Step 1.5 算出的对象
                     .currentStatus(userStatus)           // 注入 Step 1 的对象
                     .medicalInfo(medicalMap)             // 注入 Map
+                    .explicitInstruction(userStatus.getAiInstruction())
                     .isFirstTime(isFirstTime)
+                    .lastTraining(lastTrainingContent)
                     .build();
 
 
