@@ -55,13 +55,20 @@ public class PromptTemplateManager {
             请仅输出标准 JSON 数组（Array），不要包含 Markdown 标记：
             [
               {
-                "title": "...",
-                "reason": "...",
-                "training_plan": { ... },
+                "title": "今日计划标题",
+                "reason": "生成该计划的详细理由...",
+                "training_plan": {
+                    "type": "训练类型(如: 力量训练/有氧/HIIT/休息)",
+                    "duration": "预计时长(如: 45分钟)",
+                    "intensity": "强度等级(如: 低/中/高)",
+                    "focus_part": "主导肌群(如: 胸部/全身/背部)",
+                    "movements": ["动作1 (组数x次数)", "动作2 (组数x次数)", "动作3..."],
+                    "precautions": "训练注意事项(字符串或数组)"
+                },
                 "diet_plan": {
                   "total_calories": 0,
                   "macros": { "protein_g": 0, "carbs_g": 0, "fat_g": 0 },
-                  "advice": "..."
+                  "advice": "饮食建议..."
                 }
               }
             ]
