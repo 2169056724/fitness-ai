@@ -55,6 +55,7 @@ public class AIController {
     public Result<RecommendationPlanVO> getTodayPlan() {
         Long userId = UserContext.getUserId();
         // 1. 先查缓存/数据库
+        log.info("用户 {} 获取今日计划", userId);
         RecommendationPlanVO plan = recommendationService.getTodayPlan(userId);
 
         // 2. 【核心修改】如果没查到（说明是回归用户，定时任务没给他跑），现场生成
