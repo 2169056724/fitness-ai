@@ -32,7 +32,8 @@ build/
 ### VS Code ###
 .vscode/
 
-*.md
+
 *.txt
+*.md
 
 

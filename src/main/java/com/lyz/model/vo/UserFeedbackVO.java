@@ -6,15 +6,33 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+/**
+ * 用户反馈视图对象
+ */
 @Data
 public class UserFeedbackVO {
 
+    private Long id;
     private String planId;
     private LocalDate feedbackDate;
 
-    private Integer rating; // 1-5
-    private BigDecimal completionRate; // 如 85.50
+    private Integer rating;
+    private BigDecimal completionRate;
+    private Integer actualDurationMinutes;
     private String notes;
-    private String emotionTags; // 存储原始 JSON 字符串
 
+    /**
+     * 正面感受标签列表
+     */
+    private List<String> positiveTags;
+
+    /**
+     * 负面感受标签列表
+     */
+    private List<String> negativeTags;
+
+    /**
+     * 酸痛部位列表
+     */
+    private List<String> painAreas;
 }

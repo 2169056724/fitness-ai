@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lyz.mapper.UserWeightLogMapper">
+    
+    <resultMap id="BaseResultMap" type="com.lyz.model.entity.UserWeightLog">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="record_date" property="recordDate"/>
+        <result column="weight_kg" property="weightKg"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+    
+    <sql id="BaseColumns">
+        id, user_id, record_date, weight_kg, created_at
+    </sql>
+    
+    <!-- 插入记录 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_weight_log (user_id, record_date, weight_kg)
+        VALUES (#{userId}, #{recordDate}, #{weightKg})
+    </insert>
+    
+    <!-- 插入或更新（同一天覆盖） -->
+    <insert id="insertOrUpdate">
+        INSERT INTO user_weight_log (user_id, record_date, weight_kg)
+        VALUES (#{userId}, #{recordDate}, #{weightKg})
+        ON DUPLICATE KEY UPDATE
+            weight_kg = VALUES(weight_kg)
+    </insert>
+    
+    <!-- 根据用户ID和日期查询 -->
+    <select id="selectByUserIdAndDate" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM user_weight_log
+        WHERE user_id = #{userId} AND record_date = #{recordDate}
+    </select>
+    
+    <!-- 查询日期范围内的记录 -->
+    <select id="selectByUserIdAndDateRange" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM user_weight_log
+        WHERE user_id = #{userId}
+          AND record_date BETWEEN #{startDate} AND #{endDate}
+        ORDER BY record_date ASC
+    </select>
+    
+    <!-- 查询最新的体重记录 -->
+    <select id="selectLatestByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM user_weight_log
+        WHERE user_id = #{userId}
+        ORDER BY record_date DESC
+        LIMIT 1
+    </select>
+    
+    <!-- 删除记录 -->
+    <delete id="deleteById">
+        DELETE FROM user_weight_log WHERE id = #{id}
+    </delete>
+    
+</mapper>

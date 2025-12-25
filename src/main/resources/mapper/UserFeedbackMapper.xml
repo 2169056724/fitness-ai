@@ -4,25 +4,31 @@
 
     <insert id="insert" parameterType="com.lyz.model.entity.UserFeedback" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_feedback
-        (user_id, plan_id, feedback_date, rating, completion_rate, notes, emotion_tags, created_at, updated_at)
+        (user_id, plan_id, feedback_date, rating, completion_rate, actual_duration_minutes,
+         notes, positive_tags, negative_tags, pain_areas, emotion_tags, created_at, updated_at)
         VALUES
-        (#{userId}, #{planId}, #{feedbackDate}, #{rating}, #{completionRate}, #{notes}, #{emotionTags}, #{createdAt}, #{updatedAt})
+        (#{userId}, #{planId}, #{feedbackDate}, #{rating}, #{completionRate}, #{actualDurationMinutes},
+         #{notes}, #{positiveTags}, #{negativeTags}, #{painAreas}, #{emotionTags}, #{createdAt}, #{updatedAt})
     </insert>
 
     <select id="selectByUserIdAndDateRange" resultType="com.lyz.model.entity.UserFeedback">
         SELECT id, user_id AS userId, plan_id AS planId, feedback_date AS feedbackDate,
-               rating, completion_rate AS completionRate, notes, emotion_tags AS emotionTags,
+               rating, completion_rate AS completionRate, actual_duration_minutes AS actualDurationMinutes,
+               notes, positive_tags AS positiveTags, negative_tags AS negativeTags,
+               pain_areas AS painAreas, emotion_tags AS emotionTags,
                created_at AS createdAt, updated_at AS updatedAt
         FROM user_feedback
         WHERE user_id = #{userId}
           AND feedback_date &gt;= #{startDate}
           AND feedback_date &lt;= #{endDate}
-        ORDER BY feedback_date DESC
+        ORDER BY feedback_date DESC, created_at DESC
     </select>
 
     <select id="selectLatestByUserId" resultType="com.lyz.model.entity.UserFeedback">
         SELECT id, user_id AS userId, plan_id AS planId, feedback_date AS feedbackDate,
-               rating, completion_rate AS completionRate, notes, emotion_tags AS emotionTags,
+               rating, completion_rate AS completionRate, actual_duration_minutes AS actualDurationMinutes,
+               notes, positive_tags AS positiveTags, negative_tags AS negativeTags,
+               pain_areas AS painAreas, emotion_tags AS emotionTags,
                created_at AS createdAt, updated_at AS updatedAt
         FROM user_feedback
         WHERE user_id = #{userId}
@@ -31,3 +37,4 @@
     </select>
 
 </mapper>
+
