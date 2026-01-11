@@ -42,11 +42,10 @@ public class PlanBuilder {
         diet.setMacros(zeroMacros);
         diet.setForbidden_categories(Collections.singletonList("夜宵/高糖饮料"));
 
-        // 设置空餐单
+        // 设置三餐空餐单
         diet.setBreakfast(createEmptyMeal("早餐"));
         diet.setLunch(createEmptyMeal("午餐"));
         diet.setDinner(createEmptyMeal("晚餐"));
-        diet.setSnack(createEmptyMeal("加餐"));
 
         plan.setDiet_plan(diet);
 

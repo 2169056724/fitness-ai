@@ -63,7 +63,7 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     // AI 核心组件
     private final ZhipuAiClient zhipuAiClient;
-    private final FatigueAnalyzer fatigueAnalyzer;          // Step 1: 状态分析
+    private final FatigueAnalyzer fatigueAnalyzer; // Step 1: 状态分析
     private final MedicalContextBuilder medicalContextBuilder; // Step 2: 规则引擎
     private final PromptTemplateManager promptTemplateManager; // Step 3: 模板管理
 
@@ -77,19 +77,19 @@ public class RecommendationServiceImpl implements RecommendationService {
     private final PlanBuilder planBuilder;
     private final NutritionCalculator nutritionCalculator;
 
-
     @Override
     public List<RecommendationPlanVO> generateDailyPlan(Long userId, RecommendationRequestDTO request) {
         // 1. 数据准备 (Data Preparation)
-        //TODO 后续可以存到缓存，若需要
+        // TODO 后续可以存到缓存，若需要
         UserProfile profile = userProfileMapper.getByUserId(userId);
-        if (profile == null) throw new IllegalStateException("请先完善健康档案");
+        if (profile == null)
+            throw new IllegalStateException("请先完善健康档案");
 
         List<UserRecommendation> history = queryRecentPlans(userId, HISTORY_DAYS);
 
         boolean isFirstTime = history.isEmpty();
 
-        //TODO 时间需要更细粒度
+        // TODO 时间需要更细粒度
         // 如果是首次使用 且 当前时间晚于 20:00，不调用AI，直接建议休息
         if (isFirstTime && isLateNight()) {
             return planBuilder.buildRestPlan();
@@ -107,7 +107,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             NutritionCalculator.NutritionTarget nutritionTarget = nutritionCalculator.calculate(profile);
 
             // Step 2: 获取医疗建议 (优先使用 DB 缓存)
-            //TODO 若无体检数据指标就不需要医疗建议
+            // TODO 若无体检数据指标就不需要医疗建议
             HealthConstraints constraints = null;
             String medicalAdviceText = null;
             if (!StringUtils.isBlank(profile.getExtractedMedicalData())) {
@@ -117,10 +117,10 @@ public class RecommendationServiceImpl implements RecommendationService {
                     // 缓存为空，执行动态推导 (降级策略)
                     if (StringUtils.isNotBlank(profile.getExtractedMedicalData())) {
                         constraints = medicalContextBuilder.inferConstraints(
-                                profile.getExtractedMedicalData(), profile.getGender()
-                        );
+                                profile.getExtractedMedicalData(), profile.getGender());
                         // 如果有风险，生成具体文本；如果无风险，存入一个占位符，避免下次重复计算
-                        medicalAdviceText = medicalContextBuilder.generateMedicalAdvicePrompt(profile.getExtractedMedicalData(), profile.getGender());
+                        medicalAdviceText = medicalContextBuilder
+                                .generateMedicalAdvicePrompt(profile.getExtractedMedicalData(), profile.getGender());
                     } else {
                         // 无体检数据
                         constraints = new HealthConstraints();
@@ -158,7 +158,7 @@ public class RecommendationServiceImpl implements RecommendationService {
             profileMap.put("fitness_level", profile.getFitnessLevel());
             profileMap.put("available_time_min", profile.getAvailableTimePerDay());
             profileMap.put("gym_environment", profile.getTrainingLocation());
-            //  训练频率
+            // 训练频率
             profileMap.put("weekly_training_days", profile.getTrainingFrequency());
             // 2. 偏好：决定 AI 的个性化推荐 (如：不做波比跳)
             if (StringUtils.isNotBlank(profile.getSpecialRestrictions())) {
@@ -181,15 +181,14 @@ public class RecommendationServiceImpl implements RecommendationService {
 
             // 4.3 构建 Context 对象
             UserPromptContext context = UserPromptContext.builder()
-                    .profile(profileMap)                 // 注入 Map
-                    .nutrition(nutritionTarget)          // 注入 Step 1.5 算出的对象
-                    .currentStatus(userStatus)           // 注入 Step 1 的对象
-                    .medicalInfo(medicalMap)             // 注入 Map
+                    .profile(profileMap) // 注入 Map
+                    .nutrition(nutritionTarget) // 注入 Step 1.5 算出的对象
+                    .currentStatus(userStatus) // 注入 Step 1 的对象
+                    .medicalInfo(medicalMap) // 注入 Map
                     .explicitInstruction(userStatus.getAiInstruction())
                     .isFirstTime(isFirstTime)
                     .recentHistory(recentHistory)
                     .build();
-
 
             // Step 5: 渲染 Prompt
             String systemPrompt = promptTemplateManager.buildSystemPrompt();
@@ -198,7 +197,9 @@ public class RecommendationServiceImpl implements RecommendationService {
             log.info("AI Prompt生成完毕，UserId={},  疲劳度={}", userId, userStatus.getFatigueLevel());
 
             // 3. 调用 AI (AI Invocation)
-            String rawResponse = zhipuAiClient.chat(systemPrompt, userPrompt, DEFAULT_MODEL, DEFAULT_TEMPERATURE, DEFAULT_TOP_P);
+            String rawResponse = zhipuAiClient.chat(systemPrompt, userPrompt, DEFAULT_MODEL, DEFAULT_TEMPERATURE,
+                    DEFAULT_TOP_P);
+            log.info("AI 调用成功，UserId={},  结果={}", userId, rawResponse);
 
             // 4. 解析与持久化 (Parsing & Persistence)
             List<RecommendationPlanVO> plans = parseAndPersist(userId, rawResponse, profile);
@@ -233,13 +234,14 @@ public class RecommendationServiceImpl implements RecommendationService {
     }
 
     private double calculateBmi(UserProfile p) {
-        if (p.getHeightCm() == null || p.getWeightKg() == null) return 0;
+        if (p.getHeightCm() == null || p.getWeightKg() == null)
+            return 0;
         double h = p.getHeightCm().doubleValue() / 100.0;
         return p.getWeightKg().doubleValue() / (h * h);
     }
 
-
-    private List<RecommendationPlanVO> parseAndPersist(Long userId, String rawResponse, UserProfile profile) throws JsonProcessingException {
+    private List<RecommendationPlanVO> parseAndPersist(Long userId, String rawResponse, UserProfile profile)
+            throws JsonProcessingException {
         String jsonPayload = extractJsonBlock(rawResponse);
         List<RecommendationPlanVO> plans = objectMapper.readValue(jsonPayload, new TypeReference<>() {
         });
@@ -257,7 +259,8 @@ public class RecommendationServiceImpl implements RecommendationService {
     // ================= 基础设施 =================
 
     private String extractJsonBlock(String text) {
-        if (StringUtils.isBlank(text)) throw new IllegalStateException("Empty AI response");
+        if (StringUtils.isBlank(text))
+            throw new IllegalStateException("Empty AI response");
         int start = text.indexOf("[");
         int end = text.lastIndexOf("]");
         if (start >= 0 && end > start) {
@@ -306,40 +309,31 @@ public class RecommendationServiceImpl implements RecommendationService {
     }
 
     /**
-     * 根据总热量和配置，分配三餐/四餐的指标
+     * 根据总热量，按固定比例分配三餐指标 (早:午:晚 = 30:40:30)
      */
     private void calculateMealNutrition(RecommendationPlanVO.Diet diet, UserProfile profile) {
-        if (diet == null || diet.getTotal_calories() == null) return;
+        if (diet == null || diet.getTotal_calories() == null)
+            return;
 
-        // 1. 确定分配比例
-        boolean hasSnack = profile.getSnackTime() != null;
-        double[] ratios; // 早, 午, 晚, 加
-        if (hasSnack) {
-            ratios = new double[]{0.30, 0.40, 0.20, 0.10};
-        } else {
-            ratios = new double[]{0.30, 0.40, 0.30, 0.0};
-        }
+        // 固定三餐分配比例
+        double[] ratios = { 0.30, 0.40, 0.30 }; // 早, 午, 晚
 
-        // 2. 提取总量
+        // 提取总量
         int totalCal = diet.getTotal_calories();
         int totalP = diet.getMacros().getProtein_g();
         int totalC = diet.getMacros().getCarbs_g();
         int totalF = diet.getMacros().getFat_g();
 
-        // 3. 计算并填充对象
+        // 计算并填充三餐对象
         diet.setBreakfast(createMeal("早餐", ratios[0], totalCal, totalP, totalC, totalF));
         diet.setLunch(createMeal("午餐", ratios[1], totalCal, totalP, totalC, totalF));
         diet.setDinner(createMeal("晚餐", ratios[2], totalCal, totalP, totalC, totalF));
-
-        if (hasSnack) {
-            diet.setSnack(createMeal("加餐", ratios[3], totalCal, totalP, totalC, totalF));
-        } else {
-            diet.setSnack(null);
-        }
     }
 
-    private RecommendationPlanVO.Diet.Meal createMeal(String name, double ratio, int totalCal, int totalP, int totalC, int totalF) {
-        if (ratio <= 0) return null;
+    private RecommendationPlanVO.Diet.Meal createMeal(String name, double ratio, int totalCal, int totalP, int totalC,
+            int totalF) {
+        if (ratio <= 0)
+            return null;
 
         RecommendationPlanVO.Diet.Meal meal = new RecommendationPlanVO.Diet.Meal();
         meal.setName(name);
@@ -368,12 +362,94 @@ public class RecommendationServiceImpl implements RecommendationService {
             rec.setCreatedAt(LocalDateTime.now());
             userRecommendationMapper.insertOrUpdate(rec);
 
+            // === 智能填充营养记录 ===
+            saveNutritionRecordFromPlan(userId, plan);
+
             // Redis 缓存...
         } catch (Exception e) {
             log.warn("保存计划失败", e);
         }
     }
 
+    /**
+     * 从AI生成的计划中提取营养数据并写入nutrition_record表
+     * 这样图表API可以直接使用真实数据
+     */
+    @Autowired
+    private com.lyz.mapper.UserNutritionRecordMapper userNutritionRecordMapper;
+
+    private void saveNutritionRecordFromPlan(Long userId, RecommendationPlanVO plan) {
+        try {
+            RecommendationPlanVO.Diet diet = plan.getDiet_plan();
+            if (diet == null || diet.getTotal_calories() == null) {
+                return;
+            }
+
+            com.lyz.model.entity.UserNutritionRecord record = new com.lyz.model.entity.UserNutritionRecord();
+            record.setUserId(userId);
+            record.setRecordDate(LocalDate.now());
+
+            // AI推荐的热量同时作为目标值和初始计划摄入值
+            java.math.BigDecimal totalCalories = new java.math.BigDecimal(diet.getTotal_calories());
+            record.setTargetCalories(totalCalories);
+            record.setTotalCalories(totalCalories); // 修复: 确保图表数据正确
+
+            // 三大营养素 (来自AI计划)
+            if (diet.getMacros() != null) {
+                record.setProtein(new java.math.BigDecimal(diet.getMacros().getProtein_g()));
+                record.setCarbohydrate(new java.math.BigDecimal(diet.getMacros().getCarbs_g()));
+                record.setFat(new java.math.BigDecimal(diet.getMacros().getFat_g()));
+            }
+
+            // 三餐热量 (来自分配计算)
+            if (diet.getBreakfast() != null && diet.getBreakfast().getCalories() != null) {
+                record.setBreakfastCalories(new java.math.BigDecimal(diet.getBreakfast().getCalories()));
+            }
+            if (diet.getLunch() != null && diet.getLunch().getCalories() != null) {
+                record.setLunchCalories(new java.math.BigDecimal(diet.getLunch().getCalories()));
+            }
+            if (diet.getDinner() != null && diet.getDinner().getCalories() != null) {
+                record.setDinnerCalories(new java.math.BigDecimal(diet.getDinner().getCalories()));
+            }
+
+            // 预估消耗热量 (根据训练时长估算)
+            RecommendationPlanVO.Training training = plan.getTraining_plan();
+            if (training != null && training.getDuration() != null) {
+                // 简单估算：每分钟约消耗6-8kcal (取7)
+                int durationMinutes = parseDurationMinutes(training.getDuration());
+                record.setExerciseDuration(durationMinutes);
+                record.setEstimatedBurn(new java.math.BigDecimal(durationMinutes * 7));
+            }
+
+            record.setCreatedAt(LocalDateTime.now());
+            record.setUpdatedAt(LocalDateTime.now());
+
+            userNutritionRecordMapper.insertOrUpdate(record);
+            log.info("用户{}营养记录已自动填充: 目标热量={}kcal", userId, diet.getTotal_calories());
+
+        } catch (Exception e) {
+            log.warn("营养记录填充失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 解析训练时长字符串为分钟数
+     */
+    private int parseDurationMinutes(String duration) {
+        if (duration == null)
+            return 0;
+        // 匹配 "30分钟", "45 min", "1小时" 等格式
+        try {
+            String num = duration.replaceAll("[^0-9]", "");
+            int value = Integer.parseInt(num);
+            if (duration.contains("小时") || duration.toLowerCase().contains("hour")) {
+                return value * 60;
+            }
+            return value;
+        } catch (Exception e) {
+            return 30; // 默认30分钟
+        }
+    }
 
     // ================= 降级兜底 (简化版) =================
 

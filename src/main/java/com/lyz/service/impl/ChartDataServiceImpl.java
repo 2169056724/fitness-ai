@@ -115,7 +115,9 @@ public class ChartDataServiceImpl implements ChartDataService {
         BigDecimal max = BigDecimal.ZERO;
 
         for (Map<String, Object> feedback : feedbackList) {
-            LocalDate date = (LocalDate) feedback.get("date");
+            // java.sql.Date 需要转换为 LocalDate
+            java.sql.Date sqlDate = (java.sql.Date) feedback.get("date");
+            LocalDate date = sqlDate.toLocalDate();
             BigDecimal completionRate = (BigDecimal) feedback.get("completionRate");
             Integer rating = (Integer) feedback.get("rating");
 
@@ -168,7 +170,9 @@ public class ChartDataServiceImpl implements ChartDataService {
 
         // 将查询结果放入Map便于查找
         for (Map<String, Object> checkIn : checkInList) {
-            LocalDate date = (LocalDate) checkIn.get("date");
+            // java.sql.Date 需要转换为 LocalDate
+            java.sql.Date sqlDate = (java.sql.Date) checkIn.get("date");
+            LocalDate date = sqlDate.toLocalDate();
             BigDecimal completionRate = (BigDecimal) checkIn.get("completionRate");
             dateCompletionMap.put(date, completionRate);
         }
@@ -359,13 +363,12 @@ public class ChartDataServiceImpl implements ChartDataService {
 
         vo.setMacroDistribution(macroDistribution);
 
-        // 构建各餐热量分配
+        // 构建三餐热量分配
         NutritionDistributionVO.MealDistribution mealDistribution = new NutritionDistributionVO.MealDistribution();
         mealDistribution
                 .setBreakfast(record.getBreakfastCalories() != null ? record.getBreakfastCalories() : BigDecimal.ZERO);
         mealDistribution.setLunch(record.getLunchCalories() != null ? record.getLunchCalories() : BigDecimal.ZERO);
         mealDistribution.setDinner(record.getDinnerCalories() != null ? record.getDinnerCalories() : BigDecimal.ZERO);
-        mealDistribution.setSnack(record.getSnackCalories() != null ? record.getSnackCalories() : BigDecimal.ZERO);
 
         vo.setMealDistribution(mealDistribution);
 
