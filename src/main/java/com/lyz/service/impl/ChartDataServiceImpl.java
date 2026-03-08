@@ -2,13 +2,16 @@ package com.lyz.service.impl;
 
 import com.lyz.mapper.ChartDataMapper;
 import com.lyz.mapper.UserNutritionRecordMapper;
+import com.lyz.mapper.UserProfileMapper;
 import com.lyz.model.entity.UserNutritionRecord;
+import com.lyz.model.entity.UserProfile;
 import com.lyz.model.vo.CalendarHeatmapVO;
 import com.lyz.model.vo.CalorieBurnTrendVO;
 import com.lyz.model.vo.CompletionRateTrendVO;
 import com.lyz.model.vo.NutritionDistributionVO;
 import com.lyz.model.vo.WeightBmiTrendVO;
 import com.lyz.service.ChartDataService;
+import com.lyz.service.component.NutritionCalculator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -37,6 +40,12 @@ public class ChartDataServiceImpl implements ChartDataService {
 
     @Autowired
     private com.lyz.mapper.UserWeightLogMapper userWeightLogMapper;
+
+    @Autowired
+    private UserProfileMapper userProfileMapper;
+
+    @Autowired
+    private NutritionCalculator nutritionCalculator;
 
     @Override
     public WeightBmiTrendVO getWeightBmiTrend(Long userId, Integer days) {
@@ -404,6 +413,15 @@ public class ChartDataServiceImpl implements ChartDataService {
         List<UserNutritionRecord> records = userNutritionRecordMapper.selectByUserIdAndDateRange(userId, startDate,
                 endDate);
 
+        // 获取用户档案，计算 BMR（基础代谢）
+        UserProfile profile = userProfileMapper.getByUserId(userId);
+        BigDecimal dailyBmr = BigDecimal.ZERO;
+        if (profile != null) {
+            NutritionCalculator.NutritionTarget target = nutritionCalculator.calculate(profile);
+            dailyBmr = BigDecimal.valueOf(target.getBmr());
+            log.info("用户{}的每日基础代谢(BMR): {} kcal", userId, dailyBmr);
+        }
+
         CalorieBurnTrendVO vo = new CalorieBurnTrendVO();
         List<CalorieBurnTrendVO.DataPoint> dataPoints = new ArrayList<>();
 
@@ -413,13 +431,15 @@ public class ChartDataServiceImpl implements ChartDataService {
 
         for (UserNutritionRecord record : records) {
             BigDecimal intake = record.getTotalCalories() != null ? record.getTotalCalories() : BigDecimal.ZERO;
-            BigDecimal burn = record.getEstimatedBurn() != null ? record.getEstimatedBurn() : BigDecimal.ZERO;
-            BigDecimal net = intake.subtract(burn);
+            // 总消耗 = BMR（基础代谢）+ 运动消耗
+            BigDecimal exerciseBurn = record.getEstimatedBurn() != null ? record.getEstimatedBurn() : BigDecimal.ZERO;
+            BigDecimal totalDailyBurn = dailyBmr.add(exerciseBurn);
+            BigDecimal net = intake.subtract(totalDailyBurn);
 
             CalorieBurnTrendVO.DataPoint point = new CalorieBurnTrendVO.DataPoint();
             point.setDate(record.getRecordDate());
             point.setCaloriesIntake(intake);
-            point.setCaloriesBurn(burn);
+            point.setCaloriesBurn(totalDailyBurn); // 使用总消耗（BMR + 运动）
             point.setNetCalories(net);
             point.setTargetCalories(record.getTargetCalories());
             point.setExerciseDuration(record.getExerciseDuration());
@@ -427,7 +447,7 @@ public class ChartDataServiceImpl implements ChartDataService {
             dataPoints.add(point);
 
             totalIntake = totalIntake.add(intake);
-            totalBurn = totalBurn.add(burn);
+            totalBurn = totalBurn.add(totalDailyBurn);
 
             // 判断是否达标（摄入在目标±200范围内）
             if (record.getTargetCalories() != null) {

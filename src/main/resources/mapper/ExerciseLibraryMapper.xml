@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lyz.mapper.ExerciseLibraryMapper">
+
+    <resultMap id="BaseResultMap" type="com.lyz.model.entity.ExerciseLibrary">
+        <id column="id" property="id"/>
+        <result column="name" property="name"/>
+        <result column="aliases" property="aliases"/>
+        <result column="category" property="category"/>
+        <result column="muscle_group" property="muscleGroup"/>
+        <result column="gif_url" property="gifUrl"/>
+        <result column="tips" property="tips"/>
+        <result column="difficulty" property="difficulty"/>
+        <result column="equipment" property="equipment"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <sql id="BaseColumns">
+        id, name, aliases, category, muscle_group, gif_url, tips, difficulty, equipment, created_at
+    </sql>
+
+    <!-- 查询全部动作 -->
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="BaseColumns"/>
+        FROM exercise_library
+        ORDER BY category, name
+    </select>
+
+</mapper>

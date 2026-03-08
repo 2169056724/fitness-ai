@@ -15,6 +15,7 @@ import com.lyz.model.entity.UserFeedback;
 import com.lyz.model.entity.UserProfile;
 import com.lyz.model.entity.UserRecommendation;
 import com.lyz.model.vo.RecommendationPlanVO;
+import com.lyz.service.ExerciseEnrichService;
 import com.lyz.service.RecommendationService;
 import com.lyz.service.analysis.FatigueAnalyzer;
 import com.lyz.service.builder.MedicalContextBuilder;
@@ -66,6 +67,7 @@ public class RecommendationServiceImpl implements RecommendationService {
     private final FatigueAnalyzer fatigueAnalyzer; // Step 1: 状态分析
     private final MedicalContextBuilder medicalContextBuilder; // Step 2: 规则引擎
     private final PromptTemplateManager promptTemplateManager; // Step 3: 模板管理
+    private final ExerciseEnrichService exerciseEnrichService; // 动作库匹配增强
 
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate stringRedisTemplate;
@@ -248,6 +250,11 @@ public class RecommendationServiceImpl implements RecommendationService {
 
         if (plans != null && !plans.isEmpty()) {
             RecommendationPlanVO plan = plans.get(0);
+            // === 动作库匹配：补充 GIF/要点/肌群 ===
+            if (plan.getTraining_plan() != null && plan.getTraining_plan().getMovements() != null) {
+                plan.getTraining_plan().setMovements(
+                        exerciseEnrichService.enrichMovements(plan.getTraining_plan().getMovements()));
+            }
             // === 执行分餐计算逻辑 ===
             calculateMealNutrition(plan.getDiet_plan(), profile);
             // === 持久化 (保存到数据库和 Redis) ===
