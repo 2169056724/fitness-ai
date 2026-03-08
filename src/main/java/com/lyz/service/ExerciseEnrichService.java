@@ -75,6 +75,14 @@ public class ExerciseEnrichService {
     }
 
     /**
+     * 手动刷新缓存 — 当数据库中的 gif_url 等字段更新后调用
+     */
+    public void refreshCache() {
+        log.info("手动刷新动作知识库缓存...");
+        init();
+    }
+
+    /**
      * 增强动作列表：为每个动作匹配知识库中的 GIF、要点等信息
      *
      * @param rawMovements AI 输出的动作列表 (MovementVO，可能只有 name+detail)

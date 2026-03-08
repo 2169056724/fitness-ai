@@ -299,20 +299,28 @@ public class RecommendationServiceImpl implements RecommendationService {
         // ... 保持原有逻辑，读取Redis/DB ...
         String cacheKey = CACHE_KEY_PREFIX + userId + ":" + LocalDate.now().format(DateTimeFormatter.ISO_DATE);
         String cached = stringRedisTemplate.opsForValue().get(cacheKey);
+        RecommendationPlanVO plan = null;
         if (StringUtils.isNotBlank(cached)) {
             try {
-                return objectMapper.readValue(cached, RecommendationPlanVO.class);
+                plan = objectMapper.readValue(cached, RecommendationPlanVO.class);
             } catch (Exception ignored) {
             }
         }
-        UserRecommendation rec = userRecommendationMapper.getByUserIdAndDate(userId, LocalDate.now());
-        if (rec != null) {
-            try {
-                return objectMapper.readValue(rec.getPlanJson(), RecommendationPlanVO.class);
-            } catch (Exception ignored) {
+        if (plan == null) {
+            UserRecommendation rec = userRecommendationMapper.getByUserIdAndDate(userId, LocalDate.now());
+            if (rec != null) {
+                try {
+                    plan = objectMapper.readValue(rec.getPlanJson(), RecommendationPlanVO.class);
+                } catch (Exception ignored) {
+                }
             }
         }
-        return null;
+        // 每次读取时重新 enrich，确保数据库中最新的 gifUrl 能返回给前端
+        if (plan != null && plan.getTraining_plan() != null && plan.getTraining_plan().getMovements() != null) {
+            plan.getTraining_plan().setMovements(
+                    exerciseEnrichService.enrichMovements(plan.getTraining_plan().getMovements()));
+        }
+        return plan;
     }
 
     /**
