@@ -1,5 +1,6 @@
 package com.lyz.service.builder;
 
+import com.lyz.model.vo.MovementVO;
 import com.lyz.model.vo.RecommendationPlanVO;
 import org.springframework.stereotype.Component;
 
@@ -25,7 +26,10 @@ public class PlanBuilder {
         training.setDuration("5-10分钟");
         training.setIntensity("极低");
         training.setFocus_part("全身放松");
-        training.setMovements(Arrays.asList("腹式呼吸训练 (3分钟)", "睡前冥想 (5分钟)", "肩颈简单拉伸 (2分钟)"));
+        training.setMovements(Arrays.asList(
+                createMovement("腹式呼吸训练", "3分钟"),
+                createMovement("睡前冥想", "5分钟"),
+                createMovement("肩颈简单拉伸", "2分钟")));
         training.setPrecautions("请在安静、光线柔和的环境下进行，专注于呼吸，无需追求动作幅度。");
         plan.setTraining_plan(training);
 
@@ -66,5 +70,15 @@ public class PlanBuilder {
         m.setFat_g(0);
         meal.setMacros(m);
         return meal;
+    }
+
+    /**
+     * 辅助构建 MovementVO
+     */
+    private MovementVO createMovement(String name, String detail) {
+        MovementVO vo = new MovementVO();
+        vo.setName(name);
+        vo.setDetail(detail);
+        return vo;
     }
 }
