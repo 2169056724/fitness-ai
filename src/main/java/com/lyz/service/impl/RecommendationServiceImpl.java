@@ -325,6 +325,7 @@ public class RecommendationServiceImpl implements RecommendationService {
 
     /**
      * 根据总热量，按固定比例分配三餐指标 (早:午:晚 = 30:40:30)
+     * 同时将 AI 生成的食物参考传递到对应餐次
      */
     private void calculateMealNutrition(RecommendationPlanVO.Diet diet, UserProfile profile) {
         if (diet == null || diet.getTotal_calories() == null)
@@ -343,6 +344,20 @@ public class RecommendationServiceImpl implements RecommendationService {
         diet.setBreakfast(createMeal("早餐", ratios[0], totalCal, totalP, totalC, totalF));
         diet.setLunch(createMeal("午餐", ratios[1], totalCal, totalP, totalC, totalF));
         diet.setDinner(createMeal("晚餐", ratios[2], totalCal, totalP, totalC, totalF));
+
+        // === 传递 AI 生成的食物参考到 Meal 对象 ===
+        if (diet.getBreakfast() != null) {
+            String guide = diet.getBreakfast_guide();
+            diet.getBreakfast().setFoodGuide(guide != null ? guide : generateFallbackGuide("早餐", diet.getBreakfast()));
+        }
+        if (diet.getLunch() != null) {
+            String guide = diet.getLunch_guide();
+            diet.getLunch().setFoodGuide(guide != null ? guide : generateFallbackGuide("午餐", diet.getLunch()));
+        }
+        if (diet.getDinner() != null) {
+            String guide = diet.getDinner_guide();
+            diet.getDinner().setFoodGuide(guide != null ? guide : generateFallbackGuide("晚餐", diet.getDinner()));
+        }
     }
 
     private RecommendationPlanVO.Diet.Meal createMeal(String name, double ratio, int totalCal, int totalP, int totalC,
@@ -445,6 +460,21 @@ public class RecommendationServiceImpl implements RecommendationService {
         } catch (Exception e) {
             log.warn("营养记录填充失败: {}", e.getMessage());
         }
+    }
+
+    /**
+     * 当 AI 未返回食物参考时，根据餐次和营养素生成固定兜底文案
+     */
+    private String generateFallbackGuide(String mealName, RecommendationPlanVO.Diet.Meal meal) {
+        if (meal == null || meal.getCalories() == null)
+            return null;
+
+        return switch (mealName) {
+            case "早餐" -> "参考搭配：2个鸡蛋 + 1杯牛奶 + 1~2片全麦面包";
+            case "午餐" -> "参考搭配：1碗米饭 + 1份肉类(鸡胸/鱼/瘦肉) + 1盘炒蔬菜";
+            case "晚餐" -> "参考搭配：1碗杂粮粥/红薯 + 1份豆制品 + 1份蔬菜";
+            default -> null;
+        };
     }
 
     /**

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.lyz.mapper.DietCheckinMapper">
+
+    <resultMap id="BaseResultMap" type="com.lyz.model.entity.DietCheckin">
+        <id column="id" property="id"/>
+        <result column="user_id" property="userId"/>
+        <result column="checkin_date" property="checkinDate"/>
+        <result column="meal_type" property="mealType"/>
+        <result column="level" property="level"/>
+        <result column="ratio" property="ratio"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <!-- 插入或更新打卡记录 -->
+    <insert id="insertOrUpdate" parameterType="com.lyz.model.entity.DietCheckin">
+        INSERT INTO diet_checkin (
+            user_id, checkin_date, meal_type, level, ratio, created_at, updated_at
+        ) VALUES (
+            #{userId}, #{checkinDate}, #{mealType}, #{level}, #{ratio}, #{createdAt}, #{updatedAt}
+        )
+        ON DUPLICATE KEY UPDATE
+            level = VALUES(level),
+            ratio = VALUES(ratio),
+            updated_at = VALUES(updated_at)
+    </insert>
+
+    <!-- 查询用户某日所有打卡记录 -->
+    <select id="selectByUserIdAndDate" resultMap="BaseResultMap">
+        SELECT id, user_id, checkin_date, meal_type, level, ratio, created_at, updated_at
+        FROM diet_checkin
+        WHERE user_id = #{userId}
+          AND checkin_date = #{checkinDate}
+        ORDER BY meal_type ASC
+    </select>
+
+</mapper>

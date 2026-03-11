@@ -53,6 +53,11 @@ public class RecommendationPlanVO {
         private List<String> forbidden_categories; // 今日禁忌
         private String advice; // 饮食建议/策略
 
+        // === AI生成的每餐食物参考 ===
+        private String breakfast_guide; // 早餐食物参考 (生活化单位)
+        private String lunch_guide; // 午餐食物参考
+        private String dinner_guide; // 晚餐食物参考
+
         private Meal breakfast;
         private Meal lunch;
         private Meal dinner;
@@ -73,6 +78,7 @@ public class RecommendationPlanVO {
             private Integer calories; // 本餐热量
             private Macros macros; // 本餐营养素
             private String suggestion; // 简单的建议 (后端生成或固定模板)
+            private String foodGuide; // 食物参考 (小白友好的量化建议)
         }
     }
 
