@@ -52,4 +52,18 @@ public interface ChartDataService {
      * @return 热量消耗趋势VO
      */
     CalorieBurnTrendVO getCalorieBurnTrend(Long userId, Integer days);
+    
+    /**
+     * 获取健康风险雷达图数据
+     * @param userId 用户ID
+     * @return 包含5个维度的分数列表
+     */
+    java.util.List<Integer> getHealthRiskRadar(Long userId);
+    
+    /**
+     * 计算并获取用户的每日活力健康分数 (基于AHP)
+     * @param userId 用户ID
+     * @return 活力分数(0-100)
+     */
+    Integer getVitalityScore(Long userId);
 }

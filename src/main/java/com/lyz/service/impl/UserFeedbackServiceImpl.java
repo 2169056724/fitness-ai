@@ -3,6 +3,7 @@ package com.lyz.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lyz.mapper.UserRecommendationMapper;
 import com.lyz.mapper.UserFeedbackMapper;
 import com.lyz.model.dto.UserFeedbackDTO;
 import com.lyz.model.entity.UserFeedback;
@@ -23,6 +24,7 @@ import java.util.List;
 public class UserFeedbackServiceImpl implements UserFeedbackService {
 
     private final UserFeedbackMapper userFeedbackMapper;
+    private final UserRecommendationMapper userRecommendationMapper;
     private final ObjectMapper objectMapper;
 
     /**
@@ -34,7 +36,19 @@ public class UserFeedbackServiceImpl implements UserFeedbackService {
 
         // 基础字段
         entity.setUserId(userId);
-        entity.setPlanId(dto.getPlanId());
+        
+        String planId = dto.getPlanId();
+        if ((planId == null || planId.trim().isEmpty())) {
+            com.lyz.model.entity.UserRecommendation rec = userRecommendationMapper.getByUserIdAndDate(userId, LocalDate.now());
+            if (rec != null && rec.getId() != null) {
+                planId = String.valueOf(rec.getId());
+            } else {
+                // 如果当天没有计划，使用一个默认值或者处理抛出异常
+               planId = "0";
+            }
+        }
+        entity.setPlanId(planId);
+        
         entity.setFeedbackDate(dto.getFeedbackDate() != null ? dto.getFeedbackDate() : LocalDate.now());
         entity.setRating(dto.getRating());
         entity.setCompletionRate(dto.getCompletionRate());

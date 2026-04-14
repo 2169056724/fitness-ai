@@ -35,6 +35,16 @@ public class WeightBmiTrendVO {
      */
     private String bmiStatus;
     
+    /**
+     * 预测下一天体重 (算法预估)
+     */
+    private BigDecimal predictedNextWeight;
+    
+    /**
+     * 预测日期
+     */
+    private LocalDate predictedDate;
+    
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

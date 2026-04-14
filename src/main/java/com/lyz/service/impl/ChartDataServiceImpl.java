@@ -46,6 +46,15 @@ public class ChartDataServiceImpl implements ChartDataService {
 
     @Autowired
     private NutritionCalculator nutritionCalculator;
+    
+    @Autowired
+    private com.lyz.service.algorithm.HealthPredictionService healthPredictionService;
+    
+    @Autowired
+    private com.lyz.service.algorithm.VitalityScoreService vitalityScoreService;
+    
+    @Autowired
+    private com.lyz.mapper.UserFeedbackMapper userFeedbackMapper;
 
     @Override
     public WeightBmiTrendVO getWeightBmiTrend(Long userId, Integer days) {
@@ -101,6 +110,18 @@ public class ChartDataServiceImpl implements ChartDataService {
         vo.setCurrentBmi(latestBmi);
         vo.setBmiStatus(latestBmi != null ? getBmiStatus(latestBmi) : null);
         vo.setDataPoints(dataPoints);
+
+        // 使用本地线性回归算法预测下一天体重
+        if (!dataPoints.isEmpty()) {
+            List<BigDecimal> historicalWeights = new ArrayList<>();
+            for (WeightBmiTrendVO.DataPoint dp : dataPoints) {
+                historicalWeights.add(dp.getWeight());
+            }
+            BigDecimal predictedWeight = healthPredictionService.predictNextWeight(historicalWeights);
+            vo.setPredictedNextWeight(predictedWeight);
+            vo.setPredictedDate(endDate.plusDays(1));
+            log.info("用户{}预测下一天体重: {}kg", userId, predictedWeight);
+        }
 
         return vo;
     }
@@ -422,6 +443,17 @@ public class ChartDataServiceImpl implements ChartDataService {
             log.info("用户{}的每日基础代谢(BMR): {} kcal", userId, dailyBmr);
         }
 
+        // 获取该周期内的打卡反馈情况
+        List<com.lyz.model.entity.UserFeedback> feedbacks = userFeedbackMapper.selectByUserIdAndDateRange(userId, startDate, endDate);
+        java.util.Map<LocalDate, BigDecimal> feedbackMap = new java.util.HashMap<>();
+        if (feedbacks != null) {
+            for (com.lyz.model.entity.UserFeedback fb : feedbacks) {
+                if (fb.getCompletionRate() != null) {
+                    feedbackMap.put(fb.getFeedbackDate(), fb.getCompletionRate());
+                }
+            }
+        }
+
         CalorieBurnTrendVO vo = new CalorieBurnTrendVO();
         List<CalorieBurnTrendVO.DataPoint> dataPoints = new ArrayList<>();
 
@@ -431,8 +463,20 @@ public class ChartDataServiceImpl implements ChartDataService {
 
         for (UserNutritionRecord record : records) {
             BigDecimal intake = record.getTotalCalories() != null ? record.getTotalCalories() : BigDecimal.ZERO;
-            // 总消耗 = BMR（基础代谢）+ 运动消耗
+            
+            // 理论上的运动总消耗 (AI生成的预估值)
             BigDecimal exerciseBurn = record.getEstimatedBurn() != null ? record.getEstimatedBurn() : BigDecimal.ZERO;
+            
+            // 结合实际完成率估算真实的运动消耗
+            BigDecimal completionRate = feedbackMap.get(record.getRecordDate());
+            if (completionRate != null) {
+                exerciseBurn = exerciseBurn.multiply(completionRate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            } else {
+                // 若没有打卡反馈，说明未完成训练，运动消耗记为 0
+                exerciseBurn = BigDecimal.ZERO;
+            }
+
+            // 总消耗 = BMR（基础代谢）+ 实际运动消耗
             BigDecimal totalDailyBurn = dailyBmr.add(exerciseBurn);
             BigDecimal net = intake.subtract(totalDailyBurn);
 
@@ -475,5 +519,105 @@ public class ChartDataServiceImpl implements ChartDataService {
         vo.setTotalDays(recordCount);
 
         return vo;
+    }
+
+    @Override
+    public List<Integer> getHealthRiskRadar(Long userId) {
+        UserProfile profile = userProfileMapper.getByUserId(userId);
+        
+        // 默认得分 (0-100, 100为满分健康)
+        int bmiScore = 80;
+        int bpScore = 90; // 血压
+        int bsScore = 90; // 血糖
+        int activityScore = 75; // 日常体能
+        int sleepScore = 85; // 睡眠作息
+        
+        if (profile != null) {
+            // BMI
+            if (profile.getHeightCm() != null && profile.getWeightKg() != null && profile.getHeightCm().compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal heightM = profile.getHeightCm().divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+                BigDecimal bmi = profile.getWeightKg().divide(heightM.multiply(heightM), 1, RoundingMode.HALF_UP);
+                if (bmi.compareTo(new BigDecimal("18.5")) < 0) bmiScore = 70;
+                else if (bmi.compareTo(new BigDecimal("24")) < 0) bmiScore = 95;
+                else if (bmi.compareTo(new BigDecimal("28")) < 0) bmiScore = 60;
+                else bmiScore = 40;
+            }
+            
+            // 简单根据医疗限制扣分 (模拟体检单解析结果联动能力)
+            String constraints = (
+                (profile.getMedicalHistory() != null ? profile.getMedicalHistory() : "") + " " +
+                (profile.getSpecialRestrictions() != null ? profile.getSpecialRestrictions() : "") + " " +
+                (profile.getExtractedMedicalData() != null ? profile.getExtractedMedicalData() : "")
+            ).toLowerCase();
+            if (!constraints.trim().isEmpty()) {
+                if (constraints.contains("血压") || constraints.contains("高血压")) bpScore -= 35;
+                if (constraints.contains("血糖") || constraints.contains("糖尿病")) bsScore -= 35;
+                if (constraints.contains("心") || constraints.contains("关节")) activityScore -= 25;
+            }
+
+            // 根据目标调整活动分数
+            if ("减脂".equals(profile.getGoal())) {
+                activityScore += 5;
+            } else if ("增肌".equals(profile.getGoal())) {
+                activityScore += 10;
+            }
+        }
+        
+        return java.util.Arrays.asList(bmiScore, bpScore, bsScore, activityScore, sleepScore);
+    }
+    
+    @Override
+    public Integer getVitalityScore(Long userId) {
+        int basePenalty = 0;
+        UserProfile profile = userProfileMapper.getByUserId(userId);
+        if (profile != null) {
+            String constraints = (
+                (profile.getMedicalHistory() != null ? profile.getMedicalHistory() : "") + " " +
+                (profile.getSpecialRestrictions() != null ? profile.getSpecialRestrictions() : "") + " " +
+                (profile.getExtractedMedicalData() != null ? profile.getExtractedMedicalData() : "")
+            ).toLowerCase();
+            if (constraints.contains("血压")) basePenalty += 10;
+            if (constraints.contains("血糖")) basePenalty += 10;
+            if (constraints.contains("心")) basePenalty += 15;
+            if (constraints.contains("关节")) basePenalty += 5;
+        }
+
+        // 饮食依从性计算 (今日)
+        LocalDate today = LocalDate.now();
+        com.lyz.model.entity.UserNutritionRecord record = userNutritionRecordMapper.selectByUserIdAndDate(userId, today);
+        BigDecimal dietAdherence = new BigDecimal("85"); // default
+        if (record != null && record.getTargetCalories() != null && record.getTargetCalories().compareTo(BigDecimal.ZERO) > 0) {
+             BigDecimal intake = record.getTotalCalories() != null ? record.getTotalCalories() : BigDecimal.ZERO;
+             dietAdherence = intake.divide(record.getTargetCalories(), 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"));
+        }
+        
+        // 运动活跃度：基于最近7天反馈的完成率计算真实活跃度
+        BigDecimal activityLevel;
+        LocalDate weekAgo = today.minusDays(6);
+        List<com.lyz.model.entity.UserFeedback> recentFeedbacks =
+                userFeedbackMapper.selectByUserIdAndDateRange(userId, weekAgo, today);
+        if (recentFeedbacks != null && !recentFeedbacks.isEmpty()) {
+            // 用最近反馈的平均完成率作为运动活跃度评分
+            BigDecimal totalRate = BigDecimal.ZERO;
+            int count = 0;
+            for (com.lyz.model.entity.UserFeedback fb : recentFeedbacks) {
+                if (fb.getCompletionRate() != null) {
+                    totalRate = totalRate.add(fb.getCompletionRate());
+                    count++;
+                }
+            }
+            if (count > 0) {
+                activityLevel = totalRate.divide(new BigDecimal(count), 2, RoundingMode.HALF_UP);
+                log.info("用户{}运动活跃度(基于{}条反馈): {}", userId, count, activityLevel);
+            } else {
+                activityLevel = new BigDecimal("60"); // 有反馈但无完成率数据时的保守默认值
+            }
+        } else {
+            activityLevel = new BigDecimal("60"); // 无反馈记录时的保守默认值
+            log.info("用户{}无近期反馈记录，使用默认运动活跃度: {}", userId, activityLevel);
+        }
+        
+        // 调用自研AHP算法计算最终得分
+        return vitalityScoreService.calculateVitalityScore(basePenalty, dietAdherence, activityLevel);
     }
 }

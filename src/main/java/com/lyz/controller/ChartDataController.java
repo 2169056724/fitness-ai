@@ -86,4 +86,22 @@ public class ChartDataController {
         CalorieBurnTrendVO vo = chartDataService.getCalorieBurnTrend(userId, days);
         return Result.success(vo);
     }
+    
+    /**
+     * 获取健康风险雷达图数据
+     */
+    @GetMapping("/risk-radar")
+    public Result<java.util.List<Integer>> getRiskRadar() {
+        Long userId = UserContext.getUserId();
+        return Result.success(chartDataService.getHealthRiskRadar(userId));
+    }
+    
+    /**
+     * 获取每日活力得分 (AHP计算结果)
+     */
+    @GetMapping("/vitality-score")
+    public Result<Integer> getVitalityScore() {
+        Long userId = UserContext.getUserId();
+        return Result.success(chartDataService.getVitalityScore(userId));
+    }
 }
